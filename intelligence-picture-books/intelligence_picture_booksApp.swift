@@ -1,10 +1,3 @@
-//
-//  intelligence_picture_booksApp.swift
-//  intelligence-picture-books
-//
-//  Created by 渡辺海星 on 2026/03/15.
-//
-
 import SwiftUI
 import SwiftData
 
@@ -12,7 +5,8 @@ import SwiftData
 struct intelligence_picture_booksApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Book.self,
+            BookPage.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
