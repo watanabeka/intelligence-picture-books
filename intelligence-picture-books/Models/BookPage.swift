@@ -9,7 +9,6 @@ final class BookPage {
     var imageLocalName: String?
     var illustrationPrompt: String
     var mood: String
-
     var book: Book?
 
     init(

@@ -6,14 +6,14 @@ struct PlaceholderCard: View {
     let label: String
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 12)
-            .fill(Color.gray.opacity(0.12))
+        RoundedRectangle(cornerRadius: 14)
+            .fill(AppTheme.primary.opacity(0.06))
             .frame(height: height)
             .overlay {
                 VStack(spacing: 8) {
                     Image(systemName: icon)
                         .font(.title2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.primary.opacity(0.4))
                     if !label.isEmpty {
                         Text(label)
                             .font(.caption)

@@ -9,24 +9,19 @@ struct GenerationView: View {
         ScrollView {
             VStack(spacing: 24) {
                 progressHeader
-                if !viewModel.generatedTitle.isEmpty {
-                    titleCard
-                }
-                if viewModel.coverImage != nil || viewModel.phase == .generating {
-                    coverSection
-                }
+                if !viewModel.generatedTitle.isEmpty { titleCard }
+                if viewModel.coverImage != nil || viewModel.phase.isGenerating { coverSection }
                 pagesGrid
-                if viewModel.phase == .completed {
-                    readButton
-                }
+                if viewModel.phase == .completed { readButton }
             }
             .padding(24)
         }
+        .background(AppTheme.background)
         .navigationTitle("生成中")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(viewModel.phase == .generating)
+        .navigationBarBackButtonHidden(viewModel.phase.isGenerating)
         .toolbar {
-            if viewModel.phase == .generating {
+            if viewModel.phase.isGenerating {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("キャンセル") {
                         viewModel.cancelGeneration()
@@ -44,41 +39,54 @@ struct GenerationView: View {
 
     private var progressHeader: some View {
         VStack(spacing: 12) {
-            if viewModel.phase == .generating {
-                ProgressView()
-                    .controlSize(.large)
-            } else if viewModel.phase == .completed {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.largeTitle)
-                    .foregroundStyle(.green)
-            } else if case .failed = viewModel.phase {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.largeTitle)
-                    .foregroundStyle(.red)
-            }
+            phaseIcon
             Text(viewModel.progressText)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .padding()
+        .padding(20)
         .frame(maxWidth: .infinity)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(.white)
+                .shadow(color: AppTheme.primary.opacity(0.1), radius: 10, y: 3)
+        )
+    }
+
+    @ViewBuilder
+    private var phaseIcon: some View {
+        if viewModel.phase.isGenerating {
+            ZStack {
+                Circle().fill(AppTheme.primary.opacity(0.08)).frame(width: 64, height: 64)
+                ProgressView().controlSize(.large).tint(AppTheme.primary)
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 12)).foregroundStyle(AppTheme.accent)
+                    .offset(x: 24, y: -24)
+            }
+        } else if viewModel.phase == .completed {
+            ZStack {
+                Circle().fill(Color.green.opacity(0.1)).frame(width: 64, height: 64)
+                Image(systemName: "checkmark.circle.fill").font(.largeTitle).foregroundStyle(.green)
+            }
+        } else if case .failed = viewModel.phase {
+            Image(systemName: "exclamationmark.triangle.fill").font(.largeTitle).foregroundStyle(.red)
+        }
     }
 
     private var titleCard: some View {
-        Text(viewModel.generatedTitle)
-            .font(.title2.bold())
-            .padding()
-            .frame(maxWidth: .infinity)
-            .background(Color.brown.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles").foregroundStyle(AppTheme.accent)
+            Text(viewModel.generatedTitle).font(.title2.bold())
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: 14).fill(AppTheme.primary.opacity(0.07)))
     }
 
     private var coverSection: some View {
         VStack(spacing: 8) {
-            Text("表紙")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text("表紙").font(.caption).foregroundStyle(.secondary)
             if let cover = viewModel.coverImage {
                 Image(uiImage: cover)
                     .resizable()
@@ -100,15 +108,6 @@ struct GenerationView: View {
     }
 
     private var readButton: some View {
-        Button {
-            navigateToReader = true
-        } label: {
-            Label("よむ", systemImage: "book.fill")
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding()
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(.brown)
+        MagicButton(title: "よむ") { navigateToReader = true }
     }
 }
