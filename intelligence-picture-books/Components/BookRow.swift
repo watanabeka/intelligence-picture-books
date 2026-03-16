@@ -5,12 +5,12 @@ struct BookRow: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.brown.opacity(0.15))
+            RoundedRectangle(cornerRadius: 10)
+                .fill(AppTheme.primary.opacity(0.1))
                 .frame(width: 50, height: 66)
                 .overlay {
                     Image(systemName: "book.closed.fill")
-                        .foregroundStyle(.brown)
+                        .foregroundStyle(AppTheme.primary)
                 }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -29,8 +29,14 @@ struct BookRow: View {
             Spacer()
 
             Text("\(book.pageCount)P")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(AppTheme.primary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(AppTheme.primary.opacity(0.08))
+                )
         }
         .padding(.vertical, 4)
     }

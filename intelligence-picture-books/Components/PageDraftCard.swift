@@ -9,19 +9,22 @@ struct PageDraftCard: View {
                 Image(uiImage: img)
                     .resizable()
                     .aspectRatio(3/2, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
             } else if draft.isImageLoading {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.gray.opacity(0.1))
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(AppTheme.primary.opacity(0.06))
                     .aspectRatio(3/2, contentMode: .fit)
-                    .overlay { ProgressView() }
+                    .overlay {
+                        ProgressView()
+                            .tint(AppTheme.primary)
+                    }
             } else {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.gray.opacity(0.08))
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(AppTheme.primary.opacity(0.04))
                     .aspectRatio(3/2, contentMode: .fit)
                     .overlay {
                         Image(systemName: "photo")
-                            .foregroundStyle(.quaternary)
+                            .foregroundStyle(AppTheme.primary.opacity(0.2))
                     }
             }
 
@@ -32,11 +35,13 @@ struct PageDraftCard: View {
 
             Text("P.\(draft.pageNumber)")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(AppTheme.primary.opacity(0.5))
         }
         .padding(8)
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(.white)
+                .shadow(color: AppTheme.primary.opacity(0.06), radius: 6, y: 2)
+        )
     }
 }

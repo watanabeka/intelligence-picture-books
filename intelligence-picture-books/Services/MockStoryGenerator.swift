@@ -23,51 +23,39 @@ final class MockStoryGenerator: StoryGenerating, @unchecked Sendable {
         continuation.yield(.started)
         try await Task.sleep(for: .milliseconds(600))
 
-        let title = makeTitle(theme: theme)
+        let title = "\(String(theme.prefix(10)))のものがたり"
         continuation.yield(.titleGenerated(title))
         try await Task.sleep(for: .milliseconds(400))
 
-        let pages = makePages(theme: theme, pageCount: pageCount)
-        for (i, page) in pages.enumerated() {
-            continuation.yield(.pageTextGenerated(
-                page: i + 1,
-                text: page.text,
-                prompt: page.prompt,
-                mood: page.mood
-            ))
+        let templates: [(String, String, String)] = [
+            ("あるひ、\(theme)のぼうけんがはじまりました。",
+             "A gentle children's book illustration of a small rabbit starting an adventure in a sunny meadow", "わくわく"),
+            ("「いってみよう！」と、げんきにあるきだしました。",
+             "A gentle children's book illustration of a cheerful character walking on a path through a colorful forest", "たのしい"),
+            ("とちゅうで、ふしぎなともだちにであいました。",
+             "A gentle children's book illustration of two cute animals meeting in a flower garden", "ふしぎ"),
+            ("いっしょに、たかいやまをのぼりました。",
+             "A gentle children's book illustration of friends climbing a green mountain together", "ゆうき"),
+            ("くもがふわふわとちかづいてきました。",
+             "A gentle children's book illustration of fluffy white clouds approaching in a blue sky", "おだやか"),
+            ("てをのばすと、くもはやわらかくてあたたかかったです。",
+             "A gentle children's book illustration of a rabbit reaching up to touch soft clouds", "やさしい"),
+            ("そらのうえから、まちがちいさくみえました。",
+             "A gentle children's book illustration of a bird's eye view of a tiny village from above the clouds", "きらきら"),
+            ("にじがかかって、せかいがきらきらひかりました。",
+             "A gentle children's book illustration of a rainbow over a sparkling landscape", "きらきら"),
+            ("ともだちとわらいあって、とてもしあわせでした。",
+             "A gentle children's book illustration of animal friends laughing together in a sunny park", "たのしい"),
+            ("「またぼうけんしようね」とやくそくしました。",
+             "A gentle children's book illustration of friends waving goodbye at sunset", "あたたかい"),
+        ]
+
+        for i in 0..<pageCount {
+            let t = templates[i % templates.count]
+            continuation.yield(.pageTextGenerated(page: i + 1, text: t.0, prompt: t.1, mood: t.2))
             try await Task.sleep(for: .milliseconds(300))
         }
 
         continuation.yield(.storyFinished)
-    }
-
-    private func makeTitle(theme: String) -> String {
-        let short = String(theme.prefix(10))
-        return "\(short)のものがたり"
-    }
-
-    private func makePages(theme: String, pageCount: Int) -> [(text: String, prompt: String, mood: String)] {
-        let moods = ["わくわく", "どきどき", "しんみり", "たのしい", "ふしぎ", "やさしい",
-                     "ゆうき", "おだやか", "にぎやか", "きらきら", "あたたかい", "ほっこり"]
-        let templates: [(String, String)] = [
-            ("あるひ、\(theme)のぼうけんがはじまりました。", "冒険の始まり"),
-            ("「いってみよう！」と、げんきにあるきだしました。", "元気に歩く主人公"),
-            ("とちゅうで、ふしぎなともだちにであいました。", "不思議な友達との出会い"),
-            ("いっしょに、たかいやまをのぼりました。", "山を登る仲間たち"),
-            ("くもがふわふわとちかづいてきました。", "近づく雲"),
-            ("てをのばすと、くもはやわらかくてあたたかかったです。", "雲に触れる瞬間"),
-            ("そらのうえから、まちがちいさくみえました。", "空から見た街"),
-            ("にじがかかって、せかいがきらきらひかりました。", "虹のかかる風景"),
-            ("ともだちとわらいあって、とてもしあわせでした。", "笑い合う友達"),
-            ("「またぼうけんしようね」とやくそくしました。", "約束する仲間"),
-            ("おうちにかえると、あたたかいごはんがまっていました。", "温かい食卓"),
-            ("ゆめのなかでも、ぼうけんはつづきます。おしまい。", "夢の中の冒険"),
-        ]
-
-        return (0..<pageCount).map { i in
-            let t = templates[i % templates.count]
-            let mood = moods[i % moods.count]
-            return (text: t.0, prompt: t.1, mood: mood)
-        }
     }
 }

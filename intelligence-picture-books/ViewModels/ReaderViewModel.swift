@@ -5,7 +5,6 @@ import SwiftUI
 @Observable
 final class ReaderViewModel {
     let book: Book
-    var currentPage: Int = 0
     var coverImage: UIImage?
     var pageImages: [Int: UIImage] = [:]
 
@@ -16,19 +15,16 @@ final class ReaderViewModel {
         self.repository = repository
     }
 
-    var totalSlides: Int {
-        book.sortedPages.count + 1 // cover + pages
-    }
+    var totalSlides: Int { book.sortedPages.count + 1 }
 
     func loadImages() async {
-        if let coverName = book.coverImageLocalName {
-            coverImage = await repository.loadImage(name: coverName)
+        if let name = book.coverImageLocalName {
+            coverImage = await repository.loadImage(name: name)
         }
         for page in book.sortedPages {
-            if let imgName = page.imageLocalName {
-                if let img = await repository.loadImage(name: imgName) {
-                    pageImages[page.pageNumber] = img
-                }
+            if let name = page.imageLocalName,
+               let img = await repository.loadImage(name: name) {
+                pageImages[page.pageNumber] = img
             }
         }
     }
