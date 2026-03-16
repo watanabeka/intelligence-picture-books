@@ -8,6 +8,7 @@ final class BookPage {
     var text: String
     var imageLocalName: String?
     var illustrationPrompt: String
+    var finalImagePrompt: String
     var mood: String
     var book: Book?
 
@@ -17,6 +18,7 @@ final class BookPage {
         text: String = "",
         imageLocalName: String? = nil,
         illustrationPrompt: String = "",
+        finalImagePrompt: String = "",
         mood: String = ""
     ) {
         self.id = id
@@ -24,6 +26,7 @@ final class BookPage {
         self.text = text
         self.imageLocalName = imageLocalName
         self.illustrationPrompt = illustrationPrompt
+        self.finalImagePrompt = finalImagePrompt
         self.mood = mood
     }
 }

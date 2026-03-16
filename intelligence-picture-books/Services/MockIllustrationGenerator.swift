@@ -1,16 +1,13 @@
 import Foundation
 import UIKit
 
-// FallbackRenderer を使ったテーマ連動のモック画像を生成
+/// FallbackRenderer を使ったモック画像生成。
+/// キャラクターシートが利用できないため、レガシー互換 API を使用する。
 final class MockIllustrationGenerator: IllustrationGenerating {
 
-    func generateCoverImage(title: String, theme: String) async throws -> UIImage {
-        try await Task.sleep(for: .seconds(1))
-        return FallbackRenderer.renderCover(title: title, theme: theme)
-    }
-
-    func generatePageImage(pageNumber: Int, prompt: String, mood: String) async throws -> UIImage {
+    func generateImage(prompt: String) async throws -> UIImage {
         try await Task.sleep(for: .milliseconds(800))
-        return FallbackRenderer.renderPage(pageNumber: pageNumber, prompt: prompt, mood: mood)
+        // フォールバックレンダラーのレガシー API で簡易画像を生成
+        return FallbackRenderer.renderPageLegacy(pageNumber: 1, prompt: prompt, mood: "やさしい")
     }
 }

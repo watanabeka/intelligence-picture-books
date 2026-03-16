@@ -5,6 +5,7 @@ import SwiftData
 enum GenerationPhase: Equatable {
     case idle
     case generatingStory
+    case validatingPlan
     case generatingCover
     case generatingImages(current: Int, total: Int)
     case completed
@@ -12,7 +13,7 @@ enum GenerationPhase: Equatable {
 
     var isGenerating: Bool {
         switch self {
-        case .generatingStory, .generatingCover, .generatingImages: true
+        case .generatingStory, .validatingPlan, .generatingCover, .generatingImages: true
         case .idle, .completed, .failed: false
         }
     }
@@ -23,9 +24,11 @@ struct PageDraft: Identifiable {
     let pageNumber: Int
     var text: String
     var illustrationPrompt: String
+    var finalImagePrompt: String
     var mood: String
     var image: UIImage?
     var isImageLoading = false
+    var quality: GeneratedIllustrationQuality = .unknown
 }
 
 @MainActor
@@ -40,7 +43,10 @@ final class CreateBookViewModel {
     var pageDrafts: [PageDraft] = []
     var completedBook: Book?
 
-    let availablePageCounts = [5,8,10,12,15]
+    /// デバッグ情報（ReaderView で表示可能）
+    var debugStoryPlan: StoryPlan?
+
+    let availablePageCounts = [5, 8, 10, 12, 15]
 
     private let storyGenerator: any StoryGenerating
     private let illustrationGenerator: any IllustrationGenerating
@@ -67,6 +73,7 @@ final class CreateBookViewModel {
         coverImage = nil
         pageDrafts = []
         completedBook = nil
+        debugStoryPlan = nil
         phase = .generatingStory
         progressText = "物語を準備しています..."
 
@@ -83,19 +90,32 @@ final class CreateBookViewModel {
         progressText = ""
     }
 
+    // MARK: - Generation Pipeline
+
     private func runGeneration() async {
         do {
-            let stream = storyGenerator.generateStory(theme: theme, pageCount: pageCount)
-            for try await event in stream {
-                guard !Task.isCancelled else { return }
-                handleStoryEvent(event)
-            }
+            // STEP 1: StoryPlan を生成
+            let rawPlan = try await generateStoryPlan()
             guard !Task.isCancelled else { return }
 
-            await generateImages()
+            // STEP 2: StoryPlan を検証・修正
+            phase = .validatingPlan
+            progressText = "構成を確認しています..."
+            let validatedPlan = validatePlan(rawPlan)
             guard !Task.isCancelled else { return }
 
-            let book = try await saveBook()
+            debugStoryPlan = validatedPlan
+            debugLogPlan(validatedPlan)
+
+            // ページドラフトを作成
+            createPageDrafts(from: validatedPlan)
+
+            // STEP 3-4: 画像を生成（IllustrationPromptBuilder でプロンプト構築）
+            await generateImages(plan: validatedPlan)
+            guard !Task.isCancelled else { return }
+
+            // STEP 5: 保存
+            let book = try await saveBook(plan: validatedPlan)
             completedBook = book
             phase = .completed
             progressText = "絵本が完成しました！"
@@ -107,74 +127,158 @@ final class CreateBookViewModel {
         }
     }
 
-    private func handleStoryEvent(_ event: StoryGenerationEvent) {
-        switch event {
-        case .started:
-            phase = .generatingStory
-            progressText = "物語を生成しています..."
-        case .titleGenerated(let title):
-            generatedTitle = title
-            progressText = "タイトル「\(title)」が決まりました"
-        case .pageTextGenerated(let page, let text, let prompt, let mood):
-            pageDrafts.append(PageDraft(pageNumber: page, text: text, illustrationPrompt: prompt, mood: mood))
-            progressText = "\(page)/\(pageCount) ページの本文ができました"
-        case .storyFinished:
-            progressText = "本文がすべて完成しました。挿絵を生成します..."
+    // MARK: - STEP 1: StoryPlan 生成
+
+    private func generateStoryPlan() async throws -> StoryPlan {
+        let stream = storyGenerator.generateStoryPlan(theme: theme, pageCount: pageCount)
+        var plan: StoryPlan?
+
+        for try await event in stream {
+            guard !Task.isCancelled else { throw CancellationError() }
+
+            switch event {
+            case .started:
+                phase = .generatingStory
+                progressText = "物語を生成しています..."
+
+            case .progress(let message):
+                progressText = message
+
+            case .planGenerated(let generatedPlan):
+                plan = generatedPlan
+                generatedTitle = generatedPlan.title
+                progressText = "タイトル「\(generatedPlan.title)」の物語ができました"
+            }
+        }
+
+        guard let finalPlan = plan else {
+            throw GenerationError.invalidResponse
+        }
+        return finalPlan
+    }
+
+    // MARK: - STEP 2: StoryPlan 検証
+
+    private func validatePlan(_ plan: StoryPlan) -> StoryPlan {
+        let result = StoryPlanValidator.validate(plan, expectedPageCount: pageCount)
+
+        if !result.isValid {
+            print("⚠️ [Validator] Issues found:")
+            for issue in result.issues {
+                print("  - \(issue)")
+            }
+        } else {
+            print("✅ [Validator] Plan is valid")
+        }
+
+        return result.correctedPlan
+    }
+
+    // MARK: - ページドラフト作成
+
+    private func createPageDrafts(from plan: StoryPlan) {
+        pageDrafts = plan.pages.map { page in
+            let finalPrompt = IllustrationPromptBuilder.buildPagePrompt(
+                page: page,
+                characterSheet: plan.characterSheet,
+                visualStyle: plan.visualStyle,
+                storyTitle: plan.title
+            )
+            return PageDraft(
+                pageNumber: page.pageNumber,
+                text: page.narration,
+                illustrationPrompt: page.illustrationPrompt,
+                finalImagePrompt: finalPrompt,
+                mood: page.mood
+            )
         }
     }
 
-    // 表紙 → 各ページの順で画像生成。ImageCreator 失敗時はフォールバック画像で続行
+    // MARK: - STEP 3-4: 画像生成
+
     private var usingFallbackImages = false
 
-    private func generateImages() async {
+    private func generateImages(plan: StoryPlan) async {
+        // 表紙生成（本文ページとは独立）
         phase = .generatingCover
         progressText = "表紙を描いています..."
+
+        let coverPrompt = IllustrationPromptBuilder.buildCoverPrompt(
+            coverPlan: plan.coverPlan,
+            characterSheet: plan.characterSheet,
+            visualStyle: plan.visualStyle
+        )
+        debugLog("Cover prompt: \(coverPrompt)")
+
         do {
-            coverImage = try await illustrationGenerator.generateCoverImage(title: generatedTitle, theme: theme)
+            coverImage = try await illustrationGenerator.generateImage(prompt: coverPrompt)
         } catch {
             if Task.isCancelled { return }
             usingFallbackImages = true
             print("⚠️ [画像生成] 表紙生成失敗: \(error)")
-            progressText = "Image Playground が利用できないため、イラスト画像で代替します（\(error.localizedDescription)）"
-            coverImage = FallbackRenderer.renderCover(title: generatedTitle, theme: theme)
+            progressText = "Image Playground が利用できないため、イラスト画像で代替します"
+            coverImage = FallbackRenderer.renderCover(
+                title: plan.title,
+                characterSheet: plan.characterSheet,
+                theme: plan.theme,
+                visualStyle: plan.visualStyle
+            )
         }
 
+        // 各ページの画像生成
         let total = pageDrafts.count
         for i in pageDrafts.indices {
             guard !Task.isCancelled else { return }
+
             let draft = pageDrafts[i]
+            let page = plan.pages[i]
             pageDrafts[i].isImageLoading = true
-            phase = .generatingImages(current: i, total: total)
+            phase = .generatingImages(current: i + 1, total: total)
+
+            let finalPrompt = draft.finalImagePrompt
+            debugLog("Page \(draft.pageNumber) prompt: \(finalPrompt)")
 
             if usingFallbackImages {
-                // ImageCreator が使えない場合は全ページフォールバックで高速生成
+                // フォールバック: キャラクターシートを使って一貫した画像を生成
                 pageDrafts[i].image = FallbackRenderer.renderPage(
-                    pageNumber: draft.pageNumber, prompt: draft.illustrationPrompt, mood: draft.mood
+                    pageNumber: draft.pageNumber,
+                    pagePlan: page,
+                    characterSheet: plan.characterSheet,
+                    visualStyle: plan.visualStyle
                 )
+                pageDrafts[i].quality = .fallback
                 progressText = "\(draft.pageNumber)/\(pageCount) ページの挿絵ができました"
             } else {
                 progressText = "\(draft.pageNumber)/\(pageCount) ページの挿絵を描いています..."
                 do {
-                    let img = try await illustrationGenerator.generatePageImage(
-                        pageNumber: draft.pageNumber,
-                        prompt: draft.illustrationPrompt,
-                        mood: draft.mood
-                    )
+                    let img = try await illustrationGenerator.generateImage(prompt: finalPrompt)
                     guard !Task.isCancelled else { return }
                     pageDrafts[i].image = img
+                    pageDrafts[i].quality = GeneratedIllustrationQuality(
+                        hasPossibleTextArtifacts: false,
+                        consistencyScore: 0.8,
+                        matchesSceneKeywords: true,
+                        usedFallback: false
+                    )
                 } catch {
                     if Task.isCancelled { return }
                     pageDrafts[i].image = FallbackRenderer.renderPage(
-                        pageNumber: draft.pageNumber, prompt: draft.illustrationPrompt, mood: draft.mood
+                        pageNumber: draft.pageNumber,
+                        pagePlan: page,
+                        characterSheet: plan.characterSheet,
+                        visualStyle: plan.visualStyle
                     )
+                    pageDrafts[i].quality = .fallback
                 }
             }
             pageDrafts[i].isImageLoading = false
         }
     }
 
-    private func saveBook() async throws -> Book {
-        let book = Book(theme: theme, pageCount: pageCount, title: generatedTitle, isComplete: true)
+    // MARK: - Save
+
+    private func saveBook(plan: StoryPlan) async throws -> Book {
+        let book = Book(theme: theme, pageCount: pageCount, title: plan.title, isComplete: true)
 
         if let cover = coverImage {
             let name = "\(book.id.uuidString)_cover.png"
@@ -187,6 +291,7 @@ final class CreateBookViewModel {
                 pageNumber: draft.pageNumber,
                 text: draft.text,
                 illustrationPrompt: draft.illustrationPrompt,
+                finalImagePrompt: draft.finalImagePrompt,
                 mood: draft.mood
             )
             if let img = draft.image {
@@ -199,5 +304,19 @@ final class CreateBookViewModel {
 
         try await repository.saveBook(book)
         return book
+    }
+
+    // MARK: - Debug Logging
+
+    private func debugLog(_ message: String) {
+        #if DEBUG
+        print("📖 [Pipeline] \(message)")
+        #endif
+    }
+
+    private func debugLogPlan(_ plan: StoryPlan) {
+        #if DEBUG
+        print(plan.debugSummary)
+        #endif
     }
 }

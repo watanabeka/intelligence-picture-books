@@ -3,6 +3,7 @@ import SwiftUI
 struct ReaderView: View {
     @State private var viewModel: ReaderViewModel
     @State private var currentSlide = 0
+    @State private var showDebugOverlay = false
 
     init(book: Book, repository: any BookPersisting) {
         _viewModel = State(initialValue: ReaderViewModel(book: book, repository: repository))
@@ -26,6 +27,18 @@ struct ReaderView: View {
         .overlay(alignment: .bottom) { pageIndicator }
         .navigationTitle(viewModel.book.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            #if DEBUG
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showDebugOverlay.toggle()
+                } label: {
+                    Image(systemName: showDebugOverlay ? "ladybug.fill" : "ladybug")
+                        .foregroundStyle(showDebugOverlay ? .red : .secondary)
+                }
+            }
+            #endif
+        }
         .task { await viewModel.loadImages() }
     }
 
@@ -90,8 +103,44 @@ struct ReaderView: View {
 
                 Text("\(page.pageNumber) / \(viewModel.book.pageCount)")
                     .font(.caption).foregroundStyle(.secondary)
+
+                // デバッグオーバーレイ
+                #if DEBUG
+                if showDebugOverlay {
+                    debugInfo(for: page)
+                }
+                #endif
             }
             .padding(24)
         }
     }
+
+    #if DEBUG
+    private func debugInfo(for page: BookPage) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Debug Info").font(.caption.bold()).foregroundStyle(.orange)
+            debugRow("Mood", page.mood)
+            debugRow("Illustration Prompt", page.illustrationPrompt)
+            if !page.finalImagePrompt.isEmpty {
+                debugRow("Final Image Prompt", page.finalImagePrompt)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.black.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                )
+        )
+    }
+
+    private func debugRow(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.caption2.bold()).foregroundStyle(.secondary)
+            Text(value).font(.caption2).foregroundStyle(.primary)
+        }
+    }
+    #endif
 }

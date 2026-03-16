@@ -2,7 +2,7 @@ import Foundation
 
 final class MockStoryGenerator: StoryGenerating, @unchecked Sendable {
 
-    func generateStory(theme: String, pageCount: Int) -> AsyncThrowingStream<StoryGenerationEvent, Error> {
+    func generateStoryPlan(theme: String, pageCount: Int) -> AsyncThrowingStream<StoryGenerationEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
@@ -23,39 +23,95 @@ final class MockStoryGenerator: StoryGenerating, @unchecked Sendable {
         continuation.yield(.started)
         try await Task.sleep(for: .milliseconds(600))
 
-        let title = "\(String(theme.prefix(10)))のものがたり"
-        continuation.yield(.titleGenerated(title))
+        continuation.yield(.progress("キャラクターを考えています..."))
         try await Task.sleep(for: .milliseconds(400))
 
-        let templates: [(String, String, String)] = [
-            ("あるひ、\(theme)のぼうけんがはじまりました。",
-             "A gentle children's book illustration of a small rabbit starting an adventure in a sunny meadow", "わくわく"),
-            ("「いってみよう！」と、げんきにあるきだしました。",
-             "A gentle children's book illustration of a cheerful character walking on a path through a colorful forest", "たのしい"),
-            ("とちゅうで、ふしぎなともだちにであいました。",
-             "A gentle children's book illustration of two cute animals meeting in a flower garden", "ふしぎ"),
-            ("いっしょに、たかいやまをのぼりました。",
-             "A gentle children's book illustration of friends climbing a green mountain together", "ゆうき"),
-            ("くもがふわふわとちかづいてきました。",
-             "A gentle children's book illustration of fluffy white clouds approaching in a blue sky", "おだやか"),
-            ("てをのばすと、くもはやわらかくてあたたかかったです。",
-             "A gentle children's book illustration of a rabbit reaching up to touch soft clouds", "やさしい"),
-            ("そらのうえから、まちがちいさくみえました。",
-             "A gentle children's book illustration of a bird's eye view of a tiny village from above the clouds", "きらきら"),
-            ("にじがかかって、せかいがきらきらひかりました。",
-             "A gentle children's book illustration of a rainbow over a sparkling landscape", "きらきら"),
-            ("ともだちとわらいあって、とてもしあわせでした。",
-             "A gentle children's book illustration of animal friends laughing together in a sunny park", "たのしい"),
-            ("「またぼうけんしようね」とやくそくしました。",
-             "A gentle children's book illustration of friends waving goodbye at sunset", "あたたかい"),
+        let title = "\(String(theme.prefix(10)))のものがたり"
+        continuation.yield(.progress("タイトル「\(title)」が決まりました"))
+        try await Task.sleep(for: .milliseconds(300))
+
+        // キャラクターシート（固定）
+        let characterSheet = CharacterSheet(
+            mainCharacterName: "ミミ",
+            species: "rabbit",
+            ageFeeling: "young and cute",
+            bodyColor: "white",
+            earShape: "long floppy",
+            accessory: "a small blue scarf",
+            personality: "curious and kind"
+        )
+
+        let templates: [(narration: String, scene: String, mood: String, objects: [String])] = [
+            ("あるひ、ミミは \(theme)の ぼうけんに でかけました。",
+             "a small white rabbit starting an adventure in a sunny meadow",
+             "わくわく", ["meadow", "path", "flowers"]),
+            ("「いってみよう！」と、げんきに あるきだしました。",
+             "a white rabbit walking happily on a path through a colorful forest",
+             "たのしい", ["forest", "path", "butterflies"]),
+            ("とちゅうで、ふしぎな ともだちに であいました。",
+             "a white rabbit meeting a small bird in a flower garden",
+             "ふしぎ", ["garden", "bird", "flowers"]),
+            ("いっしょに、たかい やまを のぼりました。",
+             "a white rabbit and a bird climbing a green mountain together",
+             "ゆうき", ["mountain", "clouds", "path"]),
+            ("くもが ふわふわと ちかづいてきました。",
+             "a white rabbit on a hilltop with fluffy clouds approaching",
+             "おだやか", ["hill", "clouds", "sky"]),
+            ("てを のばすと、くもは やわらかくて あたたかかったです。",
+             "a white rabbit reaching up to touch soft clouds on a hilltop",
+             "やさしい", ["clouds", "hilltop", "sunlight"]),
+            ("そらの うえから、まちが ちいさく みえました。",
+             "a white rabbit looking down from above the clouds at a tiny village",
+             "きらきら", ["clouds", "village", "sky"]),
+            ("にじが かかって、せかいが きらきら ひかりました。",
+             "a white rabbit watching a rainbow over a sparkling landscape",
+             "きらきら", ["rainbow", "landscape", "sparkles"]),
+            ("ともだちと わらいあって、とても しあわせでした。",
+             "a white rabbit and a bird laughing together in a sunny park",
+             "たのしい", ["park", "sun", "flowers"]),
+            ("「また ぼうけんしようね」と やくそくしました。",
+             "a white rabbit waving goodbye at sunset with friends",
+             "あたたかい", ["sunset", "friends", "path"]),
         ]
 
+        var pages: [PagePlan] = []
         for i in 0..<pageCount {
             let t = templates[i % templates.count]
-            continuation.yield(.pageTextGenerated(page: i + 1, text: t.0, prompt: t.1, mood: t.2))
-            try await Task.sleep(for: .milliseconds(300))
+            let page = PagePlan(
+                pageNumber: i + 1,
+                sceneTitle: "Scene \(i + 1)",
+                narration: t.narration,
+                illustrationPrompt: t.scene,
+                forbiddenElements: PagePlan.defaultForbiddenElements,
+                camera: "medium shot",
+                location: "",
+                mood: t.mood,
+                keyObjects: t.objects,
+                continuityNotes: i > 0 ? "continues from previous scene" : ""
+            )
+            pages.append(page)
+
+            continuation.yield(.progress("\(i + 1)/\(pageCount) ページの本文ができました"))
+            try await Task.sleep(for: .milliseconds(200))
         }
 
-        continuation.yield(.storyFinished)
+        let coverPlan = CoverPlan(
+            title: title,
+            subtitle: nil,
+            mainCharacterDescription: characterSheet.promptFragment,
+            worldKeywords: ["meadow", "adventure"],
+            coverPrompt: "a cute white rabbit with a blue scarf in a sunny meadow, ready for adventure"
+        )
+
+        let plan = StoryPlan(
+            title: title,
+            theme: theme,
+            visualStyle: .default,
+            characterSheet: characterSheet,
+            pages: pages,
+            coverPlan: coverPlan
+        )
+
+        continuation.yield(.planGenerated(plan))
     }
 }
