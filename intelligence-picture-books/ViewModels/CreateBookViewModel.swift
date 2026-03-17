@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import SwiftData
+import ImagePlayground
 
 enum GenerationPhase: Equatable {
     case idle
@@ -278,8 +279,10 @@ final class CreateBookViewModel {
                 if Task.isCancelled { return }
                 debugLog("Cover: attempt \(attempt) failed: \(error)")
                 lastImageError = String(describing: error)
-                let desc = String(describing: error).lowercased()
-                if desc.contains("unavailable") || desc.contains("initialization") || desc.contains("初期化") || desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
+                // 型安全チェック: 確実に永続的なエラーのみ即座にスキップ
+                // ※ "unavailable" / "initialization" などの広すぎる文字列マッチは除外
+                //   （一時的障害と区別がつかないため）
+                if let ice = error as? ImageCreator.Error, case .unsupportedLanguage = ice {
                     imagePlaygroundUnavailable = true
                     break
                 }
@@ -329,8 +332,7 @@ final class CreateBookViewModel {
                 if Task.isCancelled { return }
                 debugLog("Page \(draft.pageNumber): attempt \(attempt) failed: \(error)")
                 lastImageError = String(describing: error)
-                let desc = String(describing: error).lowercased()
-                if desc.contains("unavailable") || desc.contains("initialization") || desc.contains("初期化") || desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
+                if let ice = error as? ImageCreator.Error, case .unsupportedLanguage = ice {
                     imagePlaygroundUnavailable = true
                     break
                 }

@@ -9,7 +9,12 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
     // MARK: - Availability Check
 
     /// ImageCreator / ImagePlayground が使えるか事前チェック。
-    /// シミュレーター・モデル未ダウンロード・言語非対応を早期検出してログに出す。
+    ///
+    /// **制限事項**: `ImageCreator.Error.unsupportedLanguage` は
+    /// `ImageCreator()` 初期化ではなく `images(for:)` ストリーム内でスローされる。
+    /// そのため、このメソッドは日本語UIデバイスで `.available` を返す場合がある。
+    /// 実際の言語非対応は最初の生成試行で `classify()` が検出し、
+    /// 呼び出し元が `imagePlaygroundUnavailable = true` にセットして以降の生成をスキップする。
     func checkAvailability() async -> ImageCreatorAvailability {
         #if targetEnvironment(simulator)
         print("ℹ️ [ImageCreator] シミュレーター環境 — ImageCreator は利用不可")
@@ -21,22 +26,12 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
                 print("⚠️ [ImageCreator] availableStyles が空 — モデル未ダウンロードの可能性")
                 return .noStylesAvailable
             }
-            print("✅ [ImageCreator] 利用可能 (styles: \(creator.availableStyles))")
+            print("✅ [ImageCreator] 初期化OK (styles: \(creator.availableStyles))")
+            print("ℹ️ [ImageCreator] 注意: unsupportedLanguage は生成時にのみ検出可能")
             return .available
         } catch {
-            let desc = String(describing: error).lowercased()
-            print("⚠️ [ImageCreator] 利用可否チェック失敗: \(error)")
-            if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
-                print("  → 原因: デバイス言語が非対応 — Settings > General > Language で English に変更してください")
-                return .unsupportedLanguage
-            }
-            if desc.contains("unavailable") || desc.contains("initialization") || desc.contains("初期化")
-                || desc.contains("asset") || desc.contains("model") {
-                print("  → 原因: モデル未ダウンロードまたはデバイス非対応")
-                return .modelUnavailable
-            }
-            print("  → 原因: 不明 (\(desc))")
-            return .unknown(String(describing: error))
+            // unsupportedLanguage が init 時にスローされる iOS バージョンへの対応
+            return classifyInitError(error)
         }
         #endif
     }
@@ -61,10 +56,8 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
             print("⚠️ [ImageCreator] 生成失敗 [\(category.logLabel)]: \(error)")
             switch category {
             case .permanent:
-                // デバイス非対応・言語非対応など — リトライしても無意味
                 throw error
             case .safetyFilter:
-                // コンテンツフィルター — フォールバックプロンプトでリトライ
                 print("ℹ️ [ImageCreator] 安全フィルター → フォールバックプロンプトでリトライ")
                 return try await generateSingleImage(prompt: fallbackPrompt)
             case .transient:
@@ -78,8 +71,7 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
         do {
             creator = try await ImageCreator()
         } catch {
-            let category = classify(error)
-            print("⚠️ [ImageCreator] 初期化失敗 [\(category.logLabel)]: \(error)")
+            print("⚠️ [ImageCreator] 初期化失敗 [\(classifyInitError(error).reason)]: \(error)")
             throw error
         }
 
@@ -91,7 +83,7 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
         } else if let first = creator.availableStyles.first {
             style = first
         } else {
-            print("⚠️ [ImageCreator] 利用可能なスタイルなし [device_not_supported]")
+            print("⚠️ [ImageCreator] 利用可能なスタイルなし [no_styles]")
             throw GenerationError.imageGenerationFailed(underlying: "利用可能な画像スタイルがありません")
         }
 
@@ -122,23 +114,80 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
         }
     }
 
+    /// 生成フェーズのエラーを分類する。
+    ///
+    /// **分類根拠:**
+    /// - `ImageCreator.Error.unsupportedLanguage`:
+    ///   デバイスのシステム言語が原因。プロンプトの言語・内容は無関係。
+    ///   日本語UI + 英語prompt でも発生する（シナリオ検証済み）。
+    ///   → permanent（デバイス言語を変えない限り回復不能）
+    ///
+    /// - `ImageCreator.Error.contentPolicyViolation` / safety 系:
+    ///   プロンプト内容が原因。フォールバックプロンプトで回避可能。
+    ///   → safetyFilter
+    ///
+    /// - その他（ネットワーク・タイムアウト・未知エラーなど）:
+    ///   広すぎる文字列マッチで permanent に誤分類しないよう transient とする。
+    ///   → transient（呼び出し元が2回リトライ後にフォールバックへ）
     private func classify(_ error: Error) -> ErrorCategory {
+        // 【優先】型安全なキャスト — 文字列表現に依存しない正確な判定
+        if let ice = error as? ImageCreator.Error {
+            switch ice {
+            case .unsupportedLanguage:
+                print("  → 型: ImageCreator.Error.unsupportedLanguage")
+                print("  → 原因: デバイスのシステム言語が非対応（プロンプト言語は無関係）")
+                print("  → 確認: Settings > General > Language が日本語になっていませんか？")
+                return .permanent
+            @unknown default:
+                // 未知の ImageCreator.Error ケースは内容を記録して transient 扱い
+                print("  → 型: ImageCreator.Error (未知のケース: \(ice)) — transient として扱う")
+                return .transient
+            }
+        }
+
+        // 型キャスト失敗時のフォールバック（文字列マッチ）
+        // ※ 広すぎる語（"unavailable", "initialization"）は除外 — 一時的障害と混在するため
         let desc = String(describing: error).lowercased()
-        if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
-            print("  → 原因: デバイス言語が非対応 (unsupportedLanguage) — 永続的エラー")
+        print("  → 型: \(type(of: error))")
+        print("  → 内容: \(String(describing: error))")
+
+        // 言語非対応（型キャストが取りこぼした場合の保険）
+        if desc.contains("unsupportedlanguage") {
+            print("  → 判定: permanent (unsupportedLanguage — 文字列マッチ)")
             return .permanent
         }
-        if desc.contains("unavailable") || desc.contains("initialization") || desc.contains("初期化")
-            || desc.contains("asset") || desc.contains("model") {
-            print("  → 原因: モデル未ダウンロードまたはデバイス非対応 — 永続的エラー")
-            return .permanent
-        }
-        if desc.contains("unsafe") || desc.contains("safety") || desc.contains("guardrail") {
-            print("  → 原因: 安全フィルター — フォールバックプロンプトでリトライ")
+
+        // 安全フィルター系
+        if desc.contains("contentpolicyviolation") || desc.contains("unsafe")
+            || desc.contains("safety") || desc.contains("guardrail") {
+            print("  → 判定: safety_filter")
             return .safetyFilter
         }
-        print("  → 原因: 不明 (transient) [\(desc)]")
+
+        // それ以外はすべて transient — 2回リトライ後にフォールバックへ
+        print("  → 判定: transient (未分類)")
         return .transient
+    }
+
+    /// 初期化フェーズのエラーから `ImageCreatorAvailability` を返す。
+    private func classifyInitError(_ error: Error) -> ImageCreatorAvailability {
+        print("⚠️ [ImageCreator] 初期化エラー: \(type(of: error)) — \(error)")
+        if let ice = error as? ImageCreator.Error {
+            switch ice {
+            case .unsupportedLanguage:
+                print("  → ImageCreator.Error.unsupportedLanguage (init 時に検出)")
+                return .unsupportedLanguage
+            @unknown default:
+                print("  → ImageCreator.Error (未知のケース: \(ice))")
+                return .unknown(String(describing: ice))
+            }
+        }
+        // 型キャスト失敗 — 文字列マッチで補完
+        let desc = String(describing: error).lowercased()
+        if desc.contains("unsupportedlanguage") {
+            return .unsupportedLanguage
+        }
+        return .unknown(String(describing: error))
     }
 
     // MARK: - Helpers

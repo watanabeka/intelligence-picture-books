@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import ImagePlayground
 
 @MainActor
 @Observable
@@ -111,12 +112,10 @@ final class ReaderViewModel {
             } catch {
                 lastImageError = String(describing: error)
                 debugLog("Page \(pageNum): retry attempt \(attempt) failed: \(error)")
-                let desc = String(describing: error).lowercased()
-                if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language")
-                    || desc.contains("unavailable") || desc.contains("initialization") {
+                if let ice = error as? ImageCreator.Error, case .unsupportedLanguage = ice {
                     isImageCreatorAvailable = false
-                    imageCreatorUnavailableReason = imageCreatorUnavailableReason ?? desc
-                    debugLog("Page \(pageNum): ImageCreator 永続的エラー — フォールバックに移行")
+                    imageCreatorUnavailableReason = "デバイス言語が非対応 (unsupportedLanguage)"
+                    debugLog("Page \(pageNum): ImageCreator.Error.unsupportedLanguage — フォールバックに移行")
                     break
                 }
             }
@@ -169,12 +168,10 @@ final class ReaderViewModel {
             } catch {
                 lastImageError = String(describing: error)
                 debugLog("Cover: retry attempt \(attempt) failed: \(error)")
-                let desc = String(describing: error).lowercased()
-                if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language")
-                    || desc.contains("unavailable") || desc.contains("initialization") {
+                if let ice = error as? ImageCreator.Error, case .unsupportedLanguage = ice {
                     isImageCreatorAvailable = false
-                    imageCreatorUnavailableReason = imageCreatorUnavailableReason ?? desc
-                    debugLog("Cover: ImageCreator 永続的エラー — フォールバックに移行")
+                    imageCreatorUnavailableReason = "デバイス言語が非対応 (unsupportedLanguage)"
+                    debugLog("Cover: ImageCreator.Error.unsupportedLanguage — フォールバックに移行")
                     break
                 }
             }
