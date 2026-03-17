@@ -20,6 +20,11 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
             return try await generateSingleImage(prompt: prompt)
         } catch {
             let desc = String(describing: error).lowercased()
+            // 言語非対応は永続的エラー（リトライ不要 — デバイス言語が日本語のため）
+            if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
+                print("⚠️ [ImageCreator] 言語非対応エラー: デバイス言語が ImagePlayground 非対応です")
+                throw error
+            }
             let isUnsafe = desc.contains("unsafe") || desc.contains("safety") || desc.contains("guardrail")
             if isUnsafe {
                 print("⚠️ [ImageCreator] 安全フィルター検出。フォールバックプロンプトでリトライ")

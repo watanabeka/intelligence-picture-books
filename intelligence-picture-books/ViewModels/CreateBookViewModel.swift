@@ -265,7 +265,7 @@ final class CreateBookViewModel {
                 if Task.isCancelled { return }
                 debugLog("Cover: attempt \(attempt) failed: \(error)")
                 let desc = String(describing: error).lowercased()
-                if desc.contains("unavailable") || desc.contains("initialization") || desc.contains("初期化") {
+                if desc.contains("unavailable") || desc.contains("initialization") || desc.contains("初期化") || desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
                     imagePlaygroundUnavailable = true
                     break
                 }
@@ -315,7 +315,7 @@ final class CreateBookViewModel {
                 if Task.isCancelled { return }
                 debugLog("Page \(draft.pageNumber): attempt \(attempt) failed: \(error)")
                 let desc = String(describing: error).lowercased()
-                if desc.contains("unavailable") || desc.contains("initialization") || desc.contains("初期化") {
+                if desc.contains("unavailable") || desc.contains("initialization") || desc.contains("初期化") || desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
                     imagePlaygroundUnavailable = true
                     break
                 }

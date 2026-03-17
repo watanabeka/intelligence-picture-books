@@ -94,6 +94,11 @@ final class ReaderViewModel {
                 return
             } catch {
                 debugLog("Page \(pageNum): retry attempt \(attempt) failed: \(error)")
+                let desc = String(describing: error).lowercased()
+                if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
+                    debugLog("Page \(pageNum): ImagePlayground 言語非対応 — フォールバックに移行")
+                    break
+                }
             }
         }
 
@@ -143,6 +148,11 @@ final class ReaderViewModel {
                 return
             } catch {
                 debugLog("Cover: retry attempt \(attempt) failed: \(error)")
+                let desc = String(describing: error).lowercased()
+                if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
+                    debugLog("Cover: ImagePlayground 言語非対応 — フォールバックに移行")
+                    break
+                }
             }
         }
 
