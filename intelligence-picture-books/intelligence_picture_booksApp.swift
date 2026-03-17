@@ -13,13 +13,11 @@ struct intelligence_picture_booksApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
-            // スキーマ変更で既存ストアが読めない場合、削除して再作成する
-            let supportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            let storeURL = supportDir.appendingPathComponent("default.store")
-            for ext in ["", "-wal", "-shm"] {
-                let url = storeURL.deletingPathExtension().appendingPathExtension("store\(ext)")
-                try? FileManager.default.removeItem(at: url)
-            }
+            // スキーマ変更で既存ストアが読めない場合、Application Support 以下を全削除して再作成する
+            // 画像は Documents/BookImages に保存されているため影響なし
+            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            try? FileManager.default.removeItem(at: appSupport)
+            try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
             do {
                 return try ModelContainer(for: schema, configurations: [modelConfiguration])
             } catch {
