@@ -300,16 +300,24 @@ struct ReaderView: View {
 
     #if DEBUG
     private func debugInfo(for page: BookPage) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let retryCount = viewModel.pageRetryCounts[page.pageNumber] ?? 0
+        let retryPrompt = viewModel.pageRetryPrompts[page.pageNumber]
+        let state = viewModel.pageImageStates[page.pageNumber]
+
+        return VStack(alignment: .leading, spacing: 8) {
             Text("Debug Info").font(.caption.bold()).foregroundStyle(.orange)
             debugRow("Mood", page.mood)
-            debugRow("Illustration Prompt", page.illustrationPrompt)
-            if !page.finalImagePrompt.isEmpty {
+            debugRow("Is Fallback", "\(page.isFallback)")
+            debugRow("Image State", "\(String(describing: state))")
+            debugRow("Retry Count", "\(retryCount)")
+            if let rp = retryPrompt {
+                debugRow("Retry Prompt", rp)
+            } else if !page.finalImagePrompt.isEmpty {
                 debugRow("Final Image Prompt", page.finalImagePrompt)
             }
-            debugRow("Is Fallback", "\(page.isFallback)")
-            let state = viewModel.pageImageStates[page.pageNumber]
-            debugRow("Image State", "\(String(describing: state))")
+            if !page.illustrationPrompt.isEmpty {
+                debugRow("Illustration Prompt", page.illustrationPrompt)
+            }
         }
         .padding(12)
         .background(

@@ -19,8 +19,9 @@ enum FallbackRenderer {
         let palette = paletteForStyle(visualStyle)
         let mainSymbol = symbolForSpecies(characterSheet.species)
 
+        let scene = sceneColors(for: visualStyle)
         return renderSceneImage(size: size, palette: palette) { ctx, rect in
-            drawGround(in: ctx, rect: rect, color: UIColor(hex: 0xC8E6C9))
+            drawGround(in: ctx, rect: rect, frontColor: scene.groundFront, backColor: scene.groundBack)
             drawSun(in: ctx, at: CGPoint(x: rect.width * 0.8, y: rect.height * 0.12), radius: 35, color: UIColor(hex: 0xFFE082))
             drawCloud(in: ctx, at: CGPoint(x: rect.width * 0.2, y: rect.height * 0.1), scale: 1.2)
             drawCloud(in: ctx, at: CGPoint(x: rect.width * 0.65, y: rect.height * 0.22), scale: 0.8)
@@ -29,7 +30,7 @@ enum FallbackRenderer {
             drawSymbol(mainSymbol, in: ctx, at: CGPoint(x: rect.width / 2, y: rect.height * 0.42),
                        size: 110, color: colorForCharacter(characterSheet))
 
-            drawGroundDecorations(in: ctx, rect: rect, accent: palette.accent)
+            drawGroundDecorations(in: ctx, rect: rect, accent: palette.accent, dotBase: scene.groundDotBase)
             drawVignette(in: ctx, rect: rect)
             // タイトルテキストは描かない — UI レイヤーで Text ビューを重ねる
         }
@@ -50,21 +51,24 @@ enum FallbackRenderer {
             || pagePlan.illustrationPrompt.lowercased().contains("night")
             || pagePlan.illustrationPrompt.lowercased().contains("moon")
 
+        let scene = sceneColors(for: visualStyle)
         return renderSceneImage(size: size, palette: palette) { ctx, rect in
             if isNightScene {
-                drawGround(in: ctx, rect: rect, color: UIColor(hex: 0x37474F).withAlphaComponent(0.4))
+                let nightFront = scene.groundFront.withAlphaComponent(0.35)
+                let nightBack = UIColor(hex: 0x37474F).withAlphaComponent(0.4)
+                drawGround(in: ctx, rect: rect, frontColor: nightFront, backColor: nightBack)
                 drawMoon(in: ctx, at: CGPoint(x: rect.width * 0.8, y: rect.height * 0.12), radius: 20,
                          color: UIColor(hex: 0xFFE082))
                 drawStars(in: ctx, rect: rect, count: 8)
             } else {
-                drawGround(in: ctx, rect: rect, color: UIColor(hex: 0xC8E6C9))
+                drawGround(in: ctx, rect: rect, frontColor: scene.groundFront, backColor: scene.groundBack)
                 drawSun(in: ctx, at: CGPoint(x: rect.width * 0.82, y: rect.height * 0.1), radius: 24, color: UIColor(hex: 0xFFE082))
                 drawCloud(in: ctx, at: CGPoint(x: rect.width * 0.18, y: rect.height * 0.08), scale: 0.7)
                 drawCloud(in: ctx, at: CGPoint(x: rect.width * 0.55, y: rect.height * 0.15), scale: 0.5)
             }
 
-            drawTree(in: ctx, at: CGPoint(x: rect.width * 0.12, y: rect.height * 0.63), scale: 0.7, color: UIColor(hex: 0x81C784))
-            drawTree(in: ctx, at: CGPoint(x: rect.width * 0.88, y: rect.height * 0.63), scale: 0.5, color: UIColor(hex: 0xA5D6A7))
+            drawTree(in: ctx, at: CGPoint(x: rect.width * 0.12, y: rect.height * 0.63), scale: 0.7, color: scene.treeMain)
+            drawTree(in: ctx, at: CGPoint(x: rect.width * 0.88, y: rect.height * 0.63), scale: 0.5, color: scene.treeLighter)
 
             // メインキャラクター（常に同じ見た目）
             drawSymbol(mainSymbol, in: ctx, at: CGPoint(x: rect.width * 0.4, y: rect.height * 0.48),
@@ -76,7 +80,7 @@ enum FallbackRenderer {
                            size: 40, color: palette.accent.withAlphaComponent(0.7))
             }
 
-            drawGroundDecorations(in: ctx, rect: rect, accent: palette.accent)
+            drawGroundDecorations(in: ctx, rect: rect, accent: palette.accent, dotBase: scene.groundDotBase)
             drawVignette(in: ctx, rect: rect)
         }
     }
@@ -111,6 +115,45 @@ enum FallbackRenderer {
             characterSheet: .empty,
             visualStyle: .default
         )
+    }
+
+    // MARK: - Style-aware scene colors
+
+    private struct SceneColors {
+        var groundFront: UIColor
+        var groundBack: UIColor
+        var treeMain: UIColor
+        var treeLighter: UIColor
+        var groundDotBase: UIColor
+    }
+
+    private static func sceneColors(for visualStyle: VisualStyle) -> SceneColors {
+        switch visualStyle {
+        case .pastelWatercolor:
+            return SceneColors(
+                groundFront: UIColor(hex: 0xA5D6A7),
+                groundBack: UIColor(hex: 0xC8E6C9),
+                treeMain: UIColor(hex: 0x81C784),
+                treeLighter: UIColor(hex: 0xA5D6A7),
+                groundDotBase: UIColor(hex: 0x66BB6A)
+            )
+        case .softCrayon:
+            return SceneColors(
+                groundFront: UIColor(hex: 0xFFF176),
+                groundBack: UIColor(hex: 0xFFF9C4),
+                treeMain: UIColor(hex: 0xAED581),
+                treeLighter: UIColor(hex: 0xCDDC39).withAlphaComponent(0.7),
+                groundDotBase: UIColor(hex: 0xFFB74D)
+            )
+        case .bedtimeSoft:
+            return SceneColors(
+                groundFront: UIColor(hex: 0xB39DDB),
+                groundBack: UIColor(hex: 0xD1C4E9),
+                treeMain: UIColor(hex: 0x9575CD),
+                treeLighter: UIColor(hex: 0xB39DDB),
+                groundDotBase: UIColor(hex: 0xCE93D8)
+            )
+        }
     }
 
     // MARK: - Character/Style helpers
@@ -249,7 +292,8 @@ enum FallbackRenderer {
         }
     }
 
-    private static func drawGround(in ctx: UIGraphicsImageRendererContext, rect: CGRect, color: UIColor) {
+    private static func drawGround(in ctx: UIGraphicsImageRendererContext, rect: CGRect,
+                                    frontColor: UIColor, backColor: UIColor) {
         let groundY = rect.height * 0.65
         let path = UIBezierPath()
         path.move(to: CGPoint(x: 0, y: groundY + 15))
@@ -260,7 +304,7 @@ enum FallbackRenderer {
         path.addLine(to: CGPoint(x: rect.width, y: rect.height))
         path.addLine(to: CGPoint(x: 0, y: rect.height))
         path.close()
-        color.setFill()
+        backColor.setFill()
         path.fill()
 
         let frontY = rect.height * 0.78
@@ -271,7 +315,7 @@ enum FallbackRenderer {
         frontPath.addLine(to: CGPoint(x: rect.width, y: rect.height))
         frontPath.addLine(to: CGPoint(x: 0, y: rect.height))
         frontPath.close()
-        color.withAlphaComponent(0.6).setFill()
+        frontColor.setFill()
         frontPath.fill()
     }
 
@@ -376,7 +420,8 @@ enum FallbackRenderer {
                                      width: radius * 0.9, height: radius * 0.9)).fill()
     }
 
-    private static func drawGroundDecorations(in ctx: UIGraphicsImageRendererContext, rect: CGRect, accent: UIColor) {
+    private static func drawGroundDecorations(in ctx: UIGraphicsImageRendererContext, rect: CGRect,
+                                               accent: UIColor, dotBase: UIColor) {
         let flowerPositions: [(CGFloat, CGFloat)] = [
             (0.12, 0.80), (0.28, 0.76), (0.48, 0.83), (0.68, 0.78), (0.85, 0.82),
         ]
@@ -402,7 +447,7 @@ enum FallbackRenderer {
         let grassPositions: [(CGFloat, CGFloat)] = [
             (0.22, 0.86), (0.38, 0.84), (0.55, 0.88), (0.72, 0.85), (0.90, 0.87),
         ]
-        UIColor(hex: 0x66BB6A).withAlphaComponent(0.45).setFill()
+        dotBase.withAlphaComponent(0.45).setFill()
         for pos in grassPositions {
             let r: CGFloat = 3
             UIBezierPath(ovalIn: CGRect(x: rect.width * pos.0, y: rect.height * pos.1,

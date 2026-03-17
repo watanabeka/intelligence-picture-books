@@ -9,7 +9,6 @@ struct GenerationView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                progressHeader
                 if !viewModel.generatedTitle.isEmpty { titleCard }
                 if viewModel.coverImage != nil || viewModel.phase.isGenerating { coverSection }
                 pagesGrid
@@ -58,44 +57,7 @@ struct GenerationView: View {
         }
     }
 
-    // MARK: - Progress Header
-
-    private var progressHeader: some View {
-        VStack(spacing: 12) {
-            phaseIcon
-            Text(viewModel.progressText)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(.white)
-                .shadow(color: AppTheme.primary.opacity(0.1), radius: 10, y: 3)
-        )
-    }
-
-    @ViewBuilder
-    private var phaseIcon: some View {
-        if viewModel.phase.isGenerating {
-            ZStack {
-                Circle().fill(AppTheme.primary.opacity(0.08)).frame(width: 64, height: 64)
-                ProgressView().controlSize(.large).tint(AppTheme.primary)
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 12)).foregroundStyle(AppTheme.accent)
-                    .offset(x: 24, y: -24)
-            }
-        } else if viewModel.phase == .completed {
-            ZStack {
-                Circle().fill(Color.green.opacity(0.1)).frame(width: 64, height: 64)
-                Image(systemName: "checkmark.circle.fill").font(.largeTitle).foregroundStyle(.green)
-            }
-        } else if case .failed = viewModel.phase {
-            Image(systemName: "exclamationmark.triangle.fill").font(.largeTitle).foregroundStyle(.red)
-        }
-    }
+    // MARK: - Title Card
 
     private var titleCard: some View {
         HStack(spacing: 8) {

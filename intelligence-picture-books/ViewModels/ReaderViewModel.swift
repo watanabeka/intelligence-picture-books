@@ -10,6 +10,15 @@ final class ReaderViewModel {
     var pageImages: [Int: UIImage] = [:]
     var pageImageStates: [Int: PageImageState] = [:]
 
+    /// デバッグ用: ページ番号 → リトライ回数
+    var pageRetryCounts: [Int: Int] = [:]
+    /// デバッグ用: ページ番号 → 最後に使用したリトライプロンプト
+    var pageRetryPrompts: [Int: String] = [:]
+    /// デバッグ用: 表紙のリトライ回数
+    var coverRetryCount: Int = 0
+    /// デバッグ用: 表紙の最後のリトライプロンプト
+    var coverRetryPrompt: String = ""
+
     private let repository: any BookPersisting
     let illustrationGenerator: any IllustrationGenerating
 
@@ -48,11 +57,34 @@ final class ReaderViewModel {
         let pageNum = page.pageNumber
         pageImageStates[pageNum] = .retrying
 
-        let prompt = page.finalImagePrompt.isEmpty ? page.illustrationPrompt : page.finalImagePrompt
+        // リトライ回数をカウント
+        pageRetryCounts[pageNum] = (pageRetryCounts[pageNum] ?? 0) + 1
+
+        // リトライ専用プロンプトを構築（通常生成より制約が強い）
+        let pagePlan = PagePlan(
+            pageNumber: pageNum,
+            sceneTitle: "",
+            narration: page.text,
+            illustrationPrompt: page.illustrationPrompt,
+            forbiddenElements: PagePlan.defaultForbiddenElements,
+            camera: "medium shot",
+            location: "",
+            mood: page.mood,
+            keyObjects: [],
+            continuityNotes: ""
+        )
+        let retryPrompt = IllustrationPromptBuilder.buildRetryPagePrompt(
+            page: pagePlan,
+            characterSheet: book.characterSheet,
+            visualStyle: book.visualStyle,
+            storyTitle: book.title
+        )
+        pageRetryPrompts[pageNum] = retryPrompt
+        debugLog("Page \(pageNum): retry #\(pageRetryCounts[pageNum]!) with strengthened prompt")
 
         for attempt in 1...2 {
             do {
-                let image = try await illustrationGenerator.generateImage(prompt: prompt)
+                let image = try await illustrationGenerator.generateImage(prompt: retryPrompt)
                 let imageName = "\(book.id.uuidString)_page\(pageNum).png"
                 try await repository.saveImage(image, name: imageName)
                 try await repository.updatePageImageName(imageName, pageId: page.id)
@@ -66,25 +98,12 @@ final class ReaderViewModel {
         }
 
         // 2回失敗 → フォールバック画像を生成
-        let pagePlan = PagePlan(
-            pageNumber: pageNum,
-            sceneTitle: "",
-            narration: page.text,
-            illustrationPrompt: page.illustrationPrompt,
-            forbiddenElements: PagePlan.defaultForbiddenElements,
-            camera: "medium shot",
-            location: "",
-            mood: page.mood,
-            keyObjects: [],
-            continuityNotes: ""
-        )
         let fallbackImage = FallbackRenderer.renderPage(
             pageNumber: pageNum,
             pagePlan: pagePlan,
             characterSheet: book.characterSheet,
             visualStyle: book.visualStyle
         )
-        // フォールバックも保存して次回から表示できるようにする
         let imageName = "\(book.id.uuidString)_page\(pageNum).png"
         try? await repository.saveImage(fallbackImage, name: imageName)
         pageImages[pageNum] = fallbackImage
@@ -95,28 +114,27 @@ final class ReaderViewModel {
 
     func retryCover() async {
         coverImageState = .retrying
+        coverRetryCount += 1
 
-        let prompt: String
-        if let name = book.coverImageLocalName, !name.isEmpty {
-            // プロンプトが取れないので汎用的なものを使う
-            prompt = IllustrationPromptBuilder.buildCoverPrompt(
-                coverPlan: CoverPlan(
-                    title: book.title,
-                    subtitle: nil,
-                    mainCharacterDescription: book.characterSheet.promptFragment,
-                    worldKeywords: [],
-                    coverPrompt: "\(book.characterSheet.promptFragment) in a \(book.theme) world"
-                ),
-                characterSheet: book.characterSheet,
-                visualStyle: book.visualStyle
-            )
-        } else {
-            prompt = "children's picture book front cover illustration, \(book.characterSheet.promptFragment), \(book.theme), warm inviting composition, centered character, no text, no letters, no watermark"
-        }
+        // リトライ専用プロンプトを構築
+        let coverPlan = CoverPlan(
+            title: book.title,
+            subtitle: nil,
+            mainCharacterDescription: book.characterSheet.promptFragment,
+            worldKeywords: [],
+            coverPrompt: "\(book.characterSheet.promptFragment) in a \(book.theme) world"
+        )
+        let retryPrompt = IllustrationPromptBuilder.buildRetryCoverPrompt(
+            coverPlan: coverPlan,
+            characterSheet: book.characterSheet,
+            visualStyle: book.visualStyle
+        )
+        coverRetryPrompt = retryPrompt
+        debugLog("Cover: retry #\(coverRetryCount) with strengthened prompt")
 
         for attempt in 1...2 {
             do {
-                let image = try await illustrationGenerator.generateImage(prompt: prompt)
+                let image = try await illustrationGenerator.generateImage(prompt: retryPrompt)
                 let imageName = "\(book.id.uuidString)_cover.png"
                 try await repository.saveImage(image, name: imageName)
                 coverImage = image

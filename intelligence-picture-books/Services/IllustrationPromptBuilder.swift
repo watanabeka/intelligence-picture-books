@@ -142,6 +142,89 @@ enum IllustrationPromptBuilder {
         return segments.joined(separator: ", ")
     }
 
+    // MARK: - Retry Prompt (stronger constraints)
+
+    /// リトライ時に適用する追加制約。文字・他キャラ混入・スタイル崩れを強力に抑制する。
+    private static let retryEnforcementClause =
+        "exact same main character as every other page of this book, " +
+        "strictly consistent character appearance throughout, " +
+        "only ONE character in the scene — no extra characters, no people in background, " +
+        "same illustration style and color palette as the rest of the book"
+
+    /// ページ画像のリトライ用プロンプトを構築する。通常生成より制約を強化してある。
+    static func buildRetryPagePrompt(
+        page: PagePlan,
+        characterSheet: CharacterSheet,
+        visualStyle: VisualStyle,
+        storyTitle: String
+    ) -> String {
+        var segments: [String] = []
+
+        // 1. 文字禁止 + リトライ制約を先頭に二重配置
+        segments.append(textFreeClause)
+        segments.append(retryEnforcementClause)
+
+        // 2. 絵本スタイル
+        segments.append(pictureBookClause)
+        segments.append(illustrationMediumClause)
+        segments.append(visualStyle.promptFragment)
+
+        // 3. キャラクター（フル記述）
+        segments.append(characterSheet.promptFragment)
+
+        // 4. シーン
+        let safeScene = sanitizeForIllustration(page.illustrationPrompt)
+        if !safeScene.isEmpty { segments.append("scene: \(safeScene)") }
+
+        // 5. カメラ・ムード
+        if !page.camera.isEmpty { segments.append("camera: \(page.camera)") }
+        if !page.mood.isEmpty { segments.append("\(moodToEnglish(page.mood)) atmosphere") }
+
+        // 6. キーオブジェクト
+        if !page.keyObjects.isEmpty {
+            let safe = page.keyObjects.filter { !isTextTrigger($0) }
+            if !safe.isEmpty { segments.append("featuring: \(safe.joined(separator: ", "))") }
+        }
+
+        // 7. 末尾にも二重強調（リトライなのでさらに重みを増やす）
+        segments.append(retryEnforcementClause)
+        segments.append(textFreeClause)
+
+        return segments.joined(separator: ", ")
+    }
+
+    /// 表紙画像のリトライ用プロンプトを構築する。
+    static func buildRetryCoverPrompt(
+        coverPlan: CoverPlan,
+        characterSheet: CharacterSheet,
+        visualStyle: VisualStyle
+    ) -> String {
+        var segments: [String] = []
+
+        segments.append(textFreeClause)
+        segments.append(retryEnforcementClause)
+
+        segments.append(
+            "magical storybook character portrait scene, " +
+            "hero character in a beautiful setting, " +
+            "children's illustration, warm and inviting, " +
+            "eye-catching composition, character as the clear focal point"
+        )
+        segments.append(illustrationMediumClause)
+        segments.append(visualStyle.promptFragment)
+        segments.append(characterSheet.promptFragment)
+
+        let safeCover = sanitizeForIllustration(coverPlan.coverPrompt)
+        if !safeCover.isEmpty { segments.append(safeCover) }
+
+        segments.append("centered character, full body or three-quarters view, beautiful background")
+
+        segments.append(retryEnforcementClause)
+        segments.append(textFreeClause)
+
+        return segments.joined(separator: ", ")
+    }
+
     // MARK: - Fallback Prompt
 
     static func buildFallbackPagePrompt(page: PagePlan, characterSheet: CharacterSheet) -> String {
