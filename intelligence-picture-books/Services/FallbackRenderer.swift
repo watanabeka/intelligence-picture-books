@@ -8,27 +8,41 @@ enum FallbackRenderer {
 
     // MARK: - Public
 
-    /// 表紙を描画する。タイトル文字は描かない（UIレイヤーで重ねる）。
+    /// 表紙を描画する（縦長 3:4 フォーマット）。タイトル文字は描かない（UIレイヤーで重ねる）。
     static func renderCover(
         title: String,
         characterSheet: CharacterSheet,
         theme: String,
         visualStyle: VisualStyle
     ) -> UIImage {
-        let size = CGSize(width: 640, height: 360)
+        // 3:4 縦長フォーマット（絵本表紙らしいポートレート）
+        let size = CGSize(width: 480, height: 640)
         let palette = paletteForStyle(visualStyle)
         let mainSymbol = symbolForSpecies(characterSheet.species)
-
         let scene = sceneColors(for: visualStyle)
-        return renderSceneImage(size: size, palette: palette) { ctx, rect in
-            drawGround(in: ctx, rect: rect, frontColor: scene.groundFront, backColor: scene.groundBack)
-            drawSun(in: ctx, at: CGPoint(x: rect.width * 0.8, y: rect.height * 0.12), radius: 35, color: UIColor(hex: 0xFFE082))
-            drawCloud(in: ctx, at: CGPoint(x: rect.width * 0.2, y: rect.height * 0.1), scale: 1.2)
-            drawCloud(in: ctx, at: CGPoint(x: rect.width * 0.65, y: rect.height * 0.22), scale: 0.8)
 
-            // メインキャラクター（キャラクターシートから一貫した外見）
-            drawSymbol(mainSymbol, in: ctx, at: CGPoint(x: rect.width / 2, y: rect.height * 0.42),
-                       size: 110, color: colorForCharacter(characterSheet))
+        return renderSceneImage(size: size, palette: palette) { ctx, rect in
+            // 地面（縦長なので地平線を低めに）
+            drawGround(in: ctx, rect: rect, frontColor: scene.groundFront, backColor: scene.groundBack)
+
+            // 太陽（左上）
+            drawSun(in: ctx, at: CGPoint(x: rect.width * 0.78, y: rect.height * 0.10),
+                    radius: 40, color: UIColor(hex: 0xFFE082))
+
+            // 雲（上部に余裕をもって配置）
+            drawCloud(in: ctx, at: CGPoint(x: rect.width * 0.18, y: rect.height * 0.08), scale: 1.3)
+            drawCloud(in: ctx, at: CGPoint(x: rect.width * 0.62, y: rect.height * 0.18), scale: 0.9)
+
+            // 木（左右に配置）
+            drawTree(in: ctx, at: CGPoint(x: rect.width * 0.10, y: rect.height * 0.62),
+                     scale: 0.85, color: scene.treeMain)
+            drawTree(in: ctx, at: CGPoint(x: rect.width * 0.90, y: rect.height * 0.62),
+                     scale: 0.65, color: scene.treeLighter)
+
+            // メインキャラクター（縦長なので大きく中央に配置）
+            drawCharacterWithBody(mainSymbol, in: ctx,
+                                  at: CGPoint(x: rect.width / 2, y: rect.height * 0.44),
+                                  size: 150, color: colorForCharacter(characterSheet))
 
             drawGroundDecorations(in: ctx, rect: rect, accent: palette.accent, dotBase: scene.groundDotBase)
             drawVignette(in: ctx, rect: rect)
@@ -47,9 +61,13 @@ enum FallbackRenderer {
         let palette = paletteForStyle(visualStyle, mood: pagePlan.mood)
         let mainSymbol = symbolForSpecies(characterSheet.species)
         let extraSymbol = findSymbolFromKeyObjects(pagePlan.keyObjects)
+        let prompt = pagePlan.illustrationPrompt.lowercased()
         let isNightScene = pagePlan.mood.contains("しんみり") || pagePlan.mood.contains("おだやか")
-            || pagePlan.illustrationPrompt.lowercased().contains("night")
-            || pagePlan.illustrationPrompt.lowercased().contains("moon")
+            || prompt.contains("night") || prompt.contains("moon") || prompt.contains("evening")
+        let isIndoorScene = prompt.contains("indoor") || prompt.contains("room") || prompt.contains("house")
+            || prompt.contains("home") || prompt.contains("inside")
+        let isWaterScene = prompt.contains("sea") || prompt.contains("ocean") || prompt.contains("river")
+            || prompt.contains("lake") || prompt.contains("water") || prompt.contains("pond")
 
         let scene = sceneColors(for: visualStyle)
         return renderSceneImage(size: size, palette: palette) { ctx, rect in
@@ -57,27 +75,47 @@ enum FallbackRenderer {
                 let nightFront = scene.groundFront.withAlphaComponent(0.35)
                 let nightBack = UIColor(hex: 0x37474F).withAlphaComponent(0.4)
                 drawGround(in: ctx, rect: rect, frontColor: nightFront, backColor: nightBack)
-                drawMoon(in: ctx, at: CGPoint(x: rect.width * 0.8, y: rect.height * 0.12), radius: 20,
-                         color: UIColor(hex: 0xFFE082))
-                drawStars(in: ctx, rect: rect, count: 8)
+                drawMoon(in: ctx, at: CGPoint(x: rect.width * 0.8, y: rect.height * 0.12),
+                         radius: 20, color: UIColor(hex: 0xFFE082))
+                drawStars(in: ctx, rect: rect, count: 10)
+            } else if isWaterScene {
+                // 水辺シーン: 空 + 波の地面
+                drawGround(in: ctx, rect: rect,
+                           frontColor: UIColor(hex: 0x4FC3F7).withAlphaComponent(0.55),
+                           backColor: UIColor(hex: 0x0288D1).withAlphaComponent(0.35))
+                drawSun(in: ctx, at: CGPoint(x: rect.width * 0.82, y: rect.height * 0.1),
+                        radius: 24, color: UIColor(hex: 0xFFE082))
+                drawCloud(in: ctx, at: CGPoint(x: rect.width * 0.25, y: rect.height * 0.08), scale: 0.7)
+                drawWave(in: ctx, rect: rect, color: UIColor(hex: 0x4FC3F7).withAlphaComponent(0.4))
+            } else if isIndoorScene {
+                // 屋内シーン: 暖色グラデーション床、シンプルな背景
+                drawGround(in: ctx, rect: rect,
+                           frontColor: UIColor(hex: 0xFFCCBC).withAlphaComponent(0.5),
+                           backColor: UIColor(hex: 0xFFECB3).withAlphaComponent(0.3))
             } else {
                 drawGround(in: ctx, rect: rect, frontColor: scene.groundFront, backColor: scene.groundBack)
-                drawSun(in: ctx, at: CGPoint(x: rect.width * 0.82, y: rect.height * 0.1), radius: 24, color: UIColor(hex: 0xFFE082))
+                drawSun(in: ctx, at: CGPoint(x: rect.width * 0.82, y: rect.height * 0.1),
+                        radius: 24, color: UIColor(hex: 0xFFE082))
                 drawCloud(in: ctx, at: CGPoint(x: rect.width * 0.18, y: rect.height * 0.08), scale: 0.7)
                 drawCloud(in: ctx, at: CGPoint(x: rect.width * 0.55, y: rect.height * 0.15), scale: 0.5)
             }
 
-            drawTree(in: ctx, at: CGPoint(x: rect.width * 0.12, y: rect.height * 0.63), scale: 0.7, color: scene.treeMain)
-            drawTree(in: ctx, at: CGPoint(x: rect.width * 0.88, y: rect.height * 0.63), scale: 0.5, color: scene.treeLighter)
+            if !isIndoorScene && !isWaterScene {
+                drawTree(in: ctx, at: CGPoint(x: rect.width * 0.12, y: rect.height * 0.63),
+                         scale: 0.7, color: scene.treeMain)
+                drawTree(in: ctx, at: CGPoint(x: rect.width * 0.88, y: rect.height * 0.63),
+                         scale: 0.5, color: scene.treeLighter)
+            }
 
-            // メインキャラクター（常に同じ見た目）
-            drawSymbol(mainSymbol, in: ctx, at: CGPoint(x: rect.width * 0.4, y: rect.height * 0.48),
-                       size: 72, color: colorForCharacter(characterSheet))
+            // メインキャラクター（ボディ付きで常に同じ見た目）
+            drawCharacterWithBody(mainSymbol, in: ctx,
+                                  at: CGPoint(x: rect.width * 0.4, y: rect.height * 0.48),
+                                  size: 80, color: colorForCharacter(characterSheet))
 
             // シーン固有のオブジェクト
             if let extra = extraSymbol {
-                drawSymbol(extra, in: ctx, at: CGPoint(x: rect.width * 0.65, y: rect.height * 0.52),
-                           size: 40, color: palette.accent.withAlphaComponent(0.7))
+                drawSymbol(extra, in: ctx, at: CGPoint(x: rect.width * 0.68, y: rect.height * 0.50),
+                           size: 44, color: palette.accent.withAlphaComponent(0.75))
             }
 
             drawGroundDecorations(in: ctx, rect: rect, accent: palette.accent, dotBase: scene.groundDotBase)
@@ -472,6 +510,58 @@ enum FallbackRenderer {
                                      startCenter: center, startRadius: innerR,
                                      endCenter: center, endRadius: outerR,
                                      options: [.drawsAfterEndLocation])
+        }
+    }
+
+    /// キャラクターをボディ（楕円）＋頭（SFシンボル）で描画する。
+    /// 単なるアイコン表示を避け、絵本キャラクターらしい存在感を出す。
+    private static func drawCharacterWithBody(_ symbolName: String,
+                                              in ctx: UIGraphicsImageRendererContext,
+                                              at center: CGPoint,
+                                              size: CGFloat,
+                                              color: UIColor) {
+        // ボディ（楕円）: キャラクターの胴体
+        let bodyW = size * 0.65
+        let bodyH = size * 0.55
+        let bodyY = center.y + size * 0.18
+        color.withAlphaComponent(0.88).setFill()
+        UIBezierPath(ovalIn: CGRect(x: center.x - bodyW / 2, y: bodyY - bodyH / 2,
+                                    width: bodyW, height: bodyH)).fill()
+
+        // ボディの影
+        let shadowW = bodyW * 0.75
+        UIColor.black.withAlphaComponent(0.08).setFill()
+        UIBezierPath(ovalIn: CGRect(x: center.x - shadowW / 2, y: bodyY + bodyH * 0.38,
+                                    width: shadowW, height: size * 0.09)).fill()
+
+        // 頭部（SF Symbol）: ボディの上に重ねる
+        let config = UIImage.SymbolConfiguration(pointSize: size * 0.72, weight: .regular)
+            .applying(UIImage.SymbolConfiguration(paletteColors: [color, color.withAlphaComponent(0.7)]))
+        if let img = UIImage(systemName: symbolName, withConfiguration: config) {
+            img.draw(at: CGPoint(x: center.x - img.size.width / 2,
+                                 y: center.y - img.size.height * 0.62))
+        }
+    }
+
+    /// 水辺の波紋を描画する
+    private static func drawWave(in ctx: UIGraphicsImageRendererContext, rect: CGRect, color: UIColor) {
+        let waveY = rect.height * 0.72
+        for i in 0..<3 {
+            let offsetY = CGFloat(i) * 10
+            let path = UIBezierPath()
+            path.move(to: CGPoint(x: 0, y: waveY + offsetY))
+            var x: CGFloat = 0
+            while x < rect.width {
+                path.addCurve(
+                    to: CGPoint(x: x + 40, y: waveY + offsetY),
+                    controlPoint1: CGPoint(x: x + 10, y: waveY + offsetY - 6),
+                    controlPoint2: CGPoint(x: x + 30, y: waveY + offsetY + 6)
+                )
+                x += 40
+            }
+            path.lineWidth = 1.5
+            color.withAlphaComponent(0.6 - CGFloat(i) * 0.15).setStroke()
+            path.stroke()
         }
     }
 

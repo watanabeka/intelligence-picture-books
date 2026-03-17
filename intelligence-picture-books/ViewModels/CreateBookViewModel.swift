@@ -206,16 +206,22 @@ final class CreateBookViewModel {
 
     /// ImagePlayground が利用できないことが確定したら true にして以降はフォールバックに直行
     private var imagePlaygroundUnavailable = false
+    /// AI で生成した画像枚数（表紙 + ページ）
+    private var aiImageCount = 0
+    /// フォールバックで生成した画像枚数
+    private var fallbackImageCount = 0
 
     private func generateImages(plan: StoryPlan) async {
         imagePlaygroundUnavailable = false
         lastImageError = nil
+        aiImageCount = 0
+        fallbackImageCount = 0
 
         // 事前チェック: ImageCreator が使えるか確認（シミュレーター・言語・モデル非対応を早期検出）
         let availability = await illustrationGenerator.checkAvailability()
         imageCreatorAvailability = availability
         if !availability.isUsable {
-            print("⚠️ [Pipeline] ImageCreator 非対応: \(availability.reason) — 全画像をフォールバックで生成")
+            print("⚠️ [Pipeline] ImageCreator 非対応: \(availability.reason) — fallbackOnly モードで生成")
             imagePlaygroundUnavailable = true
         }
 
@@ -257,7 +263,8 @@ final class CreateBookViewModel {
                 )
                 pageDrafts[i].imageState = .fallback
                 pageDrafts[i].quality = .fallback
-                progressText = "\(draft.pageNumber)/\(pageCount) ページの挿絵ができました"
+                fallbackImageCount += 1
+                progressText = "\(draft.pageNumber)/\(pageCount) ページのイラストができました"
             } else {
                 await generatePageImage(index: i, draft: draft, page: page, plan: plan, prompt: finalPrompt)
             }
@@ -273,6 +280,7 @@ final class CreateBookViewModel {
             do {
                 coverImage = try await illustrationGenerator.generateImage(prompt: prompt)
                 success = true
+                aiImageCount += 1
                 debugLog("Cover: success on attempt \(attempt)")
                 break
             } catch {
@@ -292,7 +300,9 @@ final class CreateBookViewModel {
 
         if !success {
             imagePlaygroundUnavailable = true
-            progressText = "Image Playground が利用できないため、イラスト画像で代替します"
+            fallbackImageCount += 1
+            // フォールバックは失敗ではなくイラスト生成として自然に表現
+            progressText = "イラスト画像で表紙を作成しています..."
             coverImage = FallbackRenderer.renderCover(
                 title: plan.title,
                 characterSheet: plan.characterSheet,
@@ -325,6 +335,7 @@ final class CreateBookViewModel {
                     matchesSceneKeywords: true,
                     usedFallback: false
                 )
+                aiImageCount += 1
                 debugLog("Page \(draft.pageNumber): success attempt \(attempt)")
                 success = true
                 break
@@ -351,21 +362,44 @@ final class CreateBookViewModel {
             )
             pageDrafts[index].imageState = .fallback
             pageDrafts[index].quality = .fallback
+            fallbackImageCount += 1
         }
     }
 
     // MARK: - Save
 
     private func saveBook(plan: StoryPlan) async throws -> Book {
+        // 画像生成モードを集計
+        let totalImages = 1 + pageDrafts.count
+        let mode: ImageGenerationMode
+        if fallbackImageCount == totalImages {
+            mode = .fallbackOnly
+        } else if aiImageCount == totalImages {
+            mode = .fullAI
+        } else {
+            mode = .mixed
+        }
+        debugLog("Image stats — AI: \(aiImageCount), fallback: \(fallbackImageCount), mode: \(mode.rawValue)")
+
+        let cs = plan.characterSheet
         let book = Book(
             theme: theme,
             pageCount: pageCount,
             title: plan.title,
             isComplete: true,
-            characterSpecies: plan.characterSheet.species,
-            characterBodyColor: plan.characterSheet.bodyColor,
-            characterAccessory: plan.characterSheet.accessory,
-            visualStyleRaw: plan.visualStyle.rawValue
+            characterSpecies: cs.species,
+            characterBodyColor: cs.bodyColor,
+            characterAccessory: cs.accessory,
+            characterEarShape: cs.earShape,
+            characterEarSize: cs.earSize,
+            characterFaceShape: cs.faceShape,
+            characterEyeStyle: cs.eyeStyle,
+            characterTailShape: cs.tailShape,
+            characterPersonality: cs.personality,
+            visualStyleRaw: plan.visualStyle.rawValue,
+            generatedImageCount: aiImageCount,
+            fallbackImageCount: fallbackImageCount,
+            imageGenerationModeRaw: mode.rawValue
         )
 
         if let cover = coverImage {

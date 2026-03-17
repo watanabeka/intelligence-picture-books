@@ -225,9 +225,53 @@ struct ReaderView: View {
     // MARK: - Debug
 
     #if DEBUG
+    /// 全デバッグ情報をテキストにまとめてクリップボードにコピーする
+    private func copyDebugLog() {
+        var lines: [String] = ["=== Debug Log ==="]
+        lines.append("Book: \(viewModel.book.title)")
+        lines.append("ImageCreator Available: \(viewModel.isImageCreatorAvailable)")
+        if let reason = viewModel.imageCreatorUnavailableReason {
+            lines.append("Unavailable Reason: \(reason)")
+        }
+        lines.append("Image Mode: \(viewModel.book.imageGenerationMode.rawValue)")
+        lines.append("AI Images: \(viewModel.book.generatedImageCount), Fallback: \(viewModel.book.fallbackImageCount)")
+        lines.append("Cover State: \(viewModel.coverImageState), Retry: \(viewModel.coverRetryCount)")
+        if !viewModel.coverRetryPrompt.isEmpty {
+            lines.append("Cover Retry Prompt: \(viewModel.coverRetryPrompt)")
+        }
+        if let err = viewModel.lastImageError {
+            lines.append("Last Error: \(err)")
+        }
+        for page in viewModel.book.sortedPages {
+            let state = viewModel.pageImageStates[page.pageNumber] ?? .failed
+            let retry = viewModel.pageRetryCounts[page.pageNumber] ?? 0
+            lines.append("--- Page \(page.pageNumber) ---")
+            lines.append("State: \(state), Fallback: \(page.isFallback), Retry: \(retry)")
+            lines.append("Mood: \(page.mood)")
+            if !page.finalImagePrompt.isEmpty {
+                lines.append("Prompt: \(page.finalImagePrompt)")
+            }
+        }
+        lines.append("=================")
+        UIPasteboard.general.string = lines.joined(separator: "\n")
+    }
+
     private var coverDebugInfo: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Debug Info (Cover)").font(.caption.bold()).foregroundStyle(.orange)
+            HStack {
+                Text("Debug Info (Cover)").font(.caption.bold()).foregroundStyle(.orange)
+                Spacer()
+                Button {
+                    copyDebugLog()
+                } label: {
+                    Label("ログをコピー", systemImage: "doc.on.clipboard")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.orange)
+                }
+                .buttonStyle(.plain)
+            }
+            debugRow("Image Mode", viewModel.book.imageGenerationMode.displayName)
+            debugRow("AI / Fallback", "\(viewModel.book.generatedImageCount) / \(viewModel.book.fallbackImageCount)")
             debugRow("ImageCreator Available", "\(viewModel.isImageCreatorAvailable)")
             if let reason = viewModel.imageCreatorUnavailableReason {
                 debugRow("Unavailable Reason", reason)
@@ -259,7 +303,7 @@ struct ReaderView: View {
         let state = viewModel.pageImageStates[page.pageNumber]
 
         return VStack(alignment: .leading, spacing: 8) {
-            Text("Debug Info").font(.caption.bold()).foregroundStyle(.orange)
+            Text("Debug Info — Page \(page.pageNumber)").font(.caption.bold()).foregroundStyle(.orange)
             debugRow("ImageCreator Available", "\(viewModel.isImageCreatorAvailable)")
             if let reason = viewModel.imageCreatorUnavailableReason {
                 debugRow("Unavailable Reason", reason)

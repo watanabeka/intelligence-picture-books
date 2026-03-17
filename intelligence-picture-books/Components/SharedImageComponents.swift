@@ -3,9 +3,9 @@ import SwiftUI
 /// 画像のアスペクト比を全画面で統一するための定数
 enum ImageAspect {
     /// ページ画像の統一アスペクト比（横長 16:9）
-    static let page: CGFloat = 16 / 9
-    /// 表紙画像のアスペクト比（ページと同じ横長 16:9）
-    static let cover: CGFloat = 16 / 9
+    static let page: CGFloat = 16.0 / 9.0
+    /// 表紙画像のアスペクト比（縦長 3:4 — 絵本表紙らしい縦長フォーマット）
+    static let cover: CGFloat = 3.0 / 4.0
 }
 
 // MARK: - 統一画像フレーム

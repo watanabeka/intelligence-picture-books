@@ -39,8 +39,15 @@ struct GenerationView: View {
             }
         }
         .sheet(item: editingBinding) { draft in
-            EditPageTextSheet(initialText: draft.text) { _, _ in
-                // 生成中画面でのテキスト編集は保存のみ（画像再生成はReaderView側で行う）
+            EditPageTextSheet(initialText: draft.text) { newText, shouldRetryImage in
+                // テキストを即座にドラフトに反映
+                if let idx = viewModel.pageDrafts.firstIndex(where: { $0.id == draft.id }) {
+                    viewModel.pageDrafts[idx].text = newText
+                    // 完了後かつ画像再生成が要求された場合のみリトライ
+                    if shouldRetryImage && isCompleted {
+                        viewModel.retryPageImage(at: idx)
+                    }
+                }
             }
         }
         .confirmationDialog(
@@ -66,6 +73,16 @@ struct GenerationView: View {
                 Button("キャンセル") {
                     viewModel.cancelGeneration()
                     showReader = false
+                }
+            }
+        } else if !viewModel.generatedTitle.isEmpty {
+            // 生成完了後は「作り直す」をツールバーに常時表示
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showRegenerateConfirm = true
+                } label: {
+                    Label("作り直す", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.subheadline)
                 }
             }
         }
@@ -95,6 +112,7 @@ struct GenerationView: View {
                         Image(uiImage: cover)
                             .resizable()
                             .scaledToFill()
+                        // 完了・フォールバック問わず常にリトライボタンを表示
                         if isCompleted {
                             RetryOverlayButton { viewModel.retryCoverImage() }
                         }
@@ -117,8 +135,13 @@ struct GenerationView: View {
                     draft: draft,
                     totalPages: viewModel.pageCount,
                     isCompleted: isCompleted,
-                    onEdit: isCompleted ? { editingDraftIndex = index } : nil,
-                    onRetry: isCompleted ? { viewModel.retryPageImage(at: index) } : nil
+                    // 画像が確定（ready/fallback）していれば生成中でもボタンを表示
+                    onEdit: (draft.imageState == .ready || draft.imageState == .fallback)
+                        ? { editingDraftIndex = index }
+                        : nil,
+                    onRetry: (draft.imageState == .ready || draft.imageState == .fallback) && isCompleted
+                        ? { viewModel.retryPageImage(at: index) }
+                        : nil
                 )
             }
         }
@@ -129,28 +152,12 @@ struct GenerationView: View {
     private var ctaButtons: some View {
         VStack(spacing: 12) {
             MagicButton(title: "よむ") { navigateToReader = true }
-
-            Button {
-                showRegenerateConfirm = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                    Text("作り直す")
-                }
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(AppTheme.primary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Capsule().fill(AppTheme.primary.opacity(0.07)))
-            }
-            .buttonStyle(.plain)
         }
         .padding(.top, 8)
     }
 
     // MARK: - Helpers
 
-    /// editingDraftIndex を Binding<PageDraft?> に変換するヘルパー
     private var editingBinding: Binding<PageDraft?> {
         Binding(
             get: {
