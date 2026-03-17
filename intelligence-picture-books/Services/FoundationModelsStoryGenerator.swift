@@ -21,6 +21,12 @@ struct StoryPlanOutput {
     @Guide(description: "Main character's distinguishing accessory in English (e.g. a small blue scarf, a red ribbon)")
     var characterAccessory: String
 
+    @Guide(description: "Main character's ear size in English (e.g. large, small, medium)")
+    var characterEarSize: String
+
+    @Guide(description: "Main character's eye style in English (e.g. large round, sparkly, wide)")
+    var characterEyeStyle: String
+
     @Guide(description: "All pages of the story in order")
     var pages: [StoryPagePlanOutput]
 }
@@ -63,6 +69,12 @@ struct TitleAndCharacterOutput {
 
     @Guide(description: "Main character's accessory in English (e.g. a small blue scarf)")
     var characterAccessory: String
+
+    @Guide(description: "Main character's ear size in English (e.g. large, small, medium)")
+    var characterEarSize: String
+
+    @Guide(description: "Main character's eye style in English (e.g. large round, sparkly, wide)")
+    var characterEyeStyle: String
 }
 
 /// 1ページ分の生成用（フォールバック tier 3）
@@ -186,6 +198,8 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
             ageFeeling: "young and cute",
             bodyColor: charOutput.characterBodyColor,
             earShape: "",
+            earSize: charOutput.characterEarSize,
+            eyeStyle: charOutput.characterEyeStyle,
             accessory: charOutput.characterAccessory,
             personality: "curious and kind"
         )
@@ -275,6 +289,8 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
             ageFeeling: "young and cute",
             bodyColor: output.characterBodyColor,
             earShape: "",
+            earSize: output.characterEarSize,
+            eyeStyle: output.characterEyeStyle,
             accessory: output.characterAccessory,
             personality: "curious and kind"
         )

@@ -2,13 +2,13 @@ import Foundation
 import UIKit
 
 /// ImageCreator が使えない環境でのフォールバック画像生成。
-/// SF Symbols + CoreGraphics で絵本風のシーンを構築する。
+/// CoreGraphics + UIBezierPath で絵本風のシーンを構築する。
 /// キャラクターシートとビジュアルスタイルを受け取り、一貫性のある画像を生成する。
 enum FallbackRenderer {
 
     // MARK: - Public
 
-    /// 表紙を描画する。characterSheet の情報を使ってキャラクターを固定する。
+    /// 表紙を描画する。タイトル文字は描かない（UIレイヤーで重ねる）。
     static func renderCover(
         title: String,
         characterSheet: CharacterSheet,
@@ -26,13 +26,12 @@ enum FallbackRenderer {
             drawCloud(in: ctx, at: CGPoint(x: rect.width * 0.65, y: rect.height * 0.22), scale: 0.8)
 
             // メインキャラクター（キャラクターシートから一貫した外見）
-            drawSymbol(mainSymbol, in: ctx, at: CGPoint(x: rect.width / 2, y: rect.height * 0.4),
-                       size: 100, color: colorForCharacter(characterSheet))
+            drawSymbol(mainSymbol, in: ctx, at: CGPoint(x: rect.width / 2, y: rect.height * 0.42),
+                       size: 110, color: colorForCharacter(characterSheet))
 
             drawGroundDecorations(in: ctx, rect: rect, accent: palette.accent)
-
-            // タイトル（UIレイヤーで重ねるため、フォールバックでは簡易表示）
-            drawTitle(title, in: ctx, rect: rect, color: palette.accent)
+            drawVignette(in: ctx, rect: rect)
+            // タイトルテキストは描かない — UI レイヤーで Text ビューを重ねる
         }
     }
 
@@ -54,8 +53,8 @@ enum FallbackRenderer {
         return renderSceneImage(size: size, palette: palette) { ctx, rect in
             if isNightScene {
                 drawGround(in: ctx, rect: rect, color: UIColor(hex: 0x37474F).withAlphaComponent(0.4))
-                drawSymbol("moon.fill", in: ctx, at: CGPoint(x: rect.width * 0.8, y: rect.height * 0.12),
-                           size: 36, color: UIColor(hex: 0xFFE082))
+                drawMoon(in: ctx, at: CGPoint(x: rect.width * 0.8, y: rect.height * 0.12), radius: 20,
+                         color: UIColor(hex: 0xFFE082))
                 drawStars(in: ctx, rect: rect, count: 8)
             } else {
                 drawGround(in: ctx, rect: rect, color: UIColor(hex: 0xC8E6C9))
@@ -78,6 +77,7 @@ enum FallbackRenderer {
             }
 
             drawGroundDecorations(in: ctx, rect: rect, accent: palette.accent)
+            drawVignette(in: ctx, rect: rect)
         }
     }
 
@@ -179,7 +179,6 @@ enum FallbackRenderer {
     private static func findSymbolFromKeyObjects(_ objects: [String]) -> String? {
         let combined = objects.joined(separator: " ").lowercased()
         let objectSymbols: [(keywords: [String], symbol: String)] = [
-            (["flower", "flowers", "はな"], "leaf.fill"),
             (["star", "stars", "ほし"], "star.fill"),
             (["cloud", "clouds", "くも"], "cloud.fill"),
             (["mountain", "やま"], "mountain.2.fill"),
@@ -189,7 +188,6 @@ enum FallbackRenderer {
             (["tree", "trees", "き"], "tree.fill"),
             (["water", "sea", "ocean", "うみ"], "water.waves"),
             (["heart", "ハート"], "heart.fill"),
-            (["butterfly", "ちょうちょ"], "leaf.fill"),
         ]
         for entry in objectSymbols {
             if entry.keywords.contains(where: { combined.contains($0) }) {
@@ -232,8 +230,14 @@ enum FallbackRenderer {
         return renderer.image { ctx in
             let rect = CGRect(origin: .zero, size: size)
             let cgCtx = ctx.cgContext
-            let colors = palette.bg.map { $0.cgColor } as CFArray
-            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: nil) {
+
+            // 3-color sky gradient: sky blue top → warm horizon → ground
+            let skyTop = palette.bg.first ?? UIColor(hex: 0xE8F5E9)
+            let skyMid = skyTop.withAlphaComponent(0.7).blended(with: UIColor(hex: 0xFFF9E7), alpha: 0.4)
+            let skyBot = palette.bg.last ?? UIColor(hex: 0xC8E6C9)
+            let colors = [skyTop.cgColor, skyMid.cgColor, skyBot.cgColor] as CFArray
+            let locations: [CGFloat] = [0, 0.55, 1.0]
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: locations) {
                 cgCtx.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
             } else {
                 palette.bg.first?.setFill()
@@ -272,25 +276,53 @@ enum FallbackRenderer {
     }
 
     private static func drawSun(in ctx: UIGraphicsImageRendererContext, at center: CGPoint, radius: CGFloat, color: UIColor) {
-        color.withAlphaComponent(0.15).setFill()
-        UIBezierPath(ovalIn: CGRect(x: center.x - radius * 2, y: center.y - radius * 2,
-                                     width: radius * 4, height: radius * 4)).fill()
-        color.withAlphaComponent(0.3).setFill()
-        UIBezierPath(ovalIn: CGRect(x: center.x - radius * 1.3, y: center.y - radius * 1.3,
-                                     width: radius * 2.6, height: radius * 2.6)).fill()
+        color.withAlphaComponent(0.12).setFill()
+        UIBezierPath(ovalIn: CGRect(x: center.x - radius * 2.2, y: center.y - radius * 2.2,
+                                     width: radius * 4.4, height: radius * 4.4)).fill()
+        color.withAlphaComponent(0.25).setFill()
+        UIBezierPath(ovalIn: CGRect(x: center.x - radius * 1.4, y: center.y - radius * 1.4,
+                                     width: radius * 2.8, height: radius * 2.8)).fill()
         color.setFill()
         UIBezierPath(ovalIn: CGRect(x: center.x - radius, y: center.y - radius,
                                      width: radius * 2, height: radius * 2)).fill()
     }
 
-    private static func drawCloud(in ctx: UIGraphicsImageRendererContext, at center: CGPoint, scale: CGFloat) {
-        let color = UIColor.white.withAlphaComponent(0.8)
+    private static func drawMoon(in ctx: UIGraphicsImageRendererContext, at center: CGPoint, radius: CGFloat, color: UIColor) {
+        // Crescent moon using two overlapping circles
         color.setFill()
-        let w: CGFloat = 60 * scale
-        let h: CGFloat = 25 * scale
-        UIBezierPath(ovalIn: CGRect(x: center.x - w / 2, y: center.y - h / 2, width: w, height: h)).fill()
-        UIBezierPath(ovalIn: CGRect(x: center.x - w * 0.6, y: center.y, width: w * 0.7, height: h * 0.8)).fill()
-        UIBezierPath(ovalIn: CGRect(x: center.x + w * 0.05, y: center.y + h * 0.1, width: w * 0.6, height: h * 0.75)).fill()
+        UIBezierPath(ovalIn: CGRect(x: center.x - radius, y: center.y - radius,
+                                     width: radius * 2, height: radius * 2)).fill()
+        // Subtract with background-ish color to make crescent
+        let bgColor = UIColor(hex: 0x1A237E).withAlphaComponent(0.7)
+        bgColor.setFill()
+        UIBezierPath(ovalIn: CGRect(x: center.x - radius * 0.3, y: center.y - radius * 1.1,
+                                     width: radius * 1.8, height: radius * 1.8)).fill()
+    }
+
+    private static func drawCloud(in ctx: UIGraphicsImageRendererContext, at center: CGPoint, scale: CGFloat) {
+        // Rounder, multi-bubble cloud using bezier arcs
+        let color = UIColor.white.withAlphaComponent(0.88)
+        color.setFill()
+        let w: CGFloat = 70 * scale
+        let h: CGFloat = 28 * scale
+        let r = h * 0.5
+
+        // Main elongated body
+        let bodyPath = UIBezierPath(roundedRect: CGRect(x: center.x - w * 0.46, y: center.y - h * 0.3,
+                                                          width: w * 0.92, height: h), cornerRadius: r)
+        bodyPath.fill()
+
+        // Large top bubble
+        UIBezierPath(ovalIn: CGRect(x: center.x - w * 0.18, y: center.y - h * 0.9,
+                                     width: w * 0.46, height: h * 0.9)).fill()
+
+        // Left smaller bubble
+        UIBezierPath(ovalIn: CGRect(x: center.x - w * 0.45, y: center.y - h * 0.6,
+                                     width: w * 0.32, height: h * 0.65)).fill()
+
+        // Right smaller bubble
+        UIBezierPath(ovalIn: CGRect(x: center.x + w * 0.1, y: center.y - h * 0.5,
+                                     width: w * 0.28, height: h * 0.55)).fill()
     }
 
     private static func drawTree(in ctx: UIGraphicsImageRendererContext, at base: CGPoint, scale: CGFloat, color: UIColor) {
@@ -309,7 +341,6 @@ enum FallbackRenderer {
     }
 
     private static func drawStars(in ctx: UIGraphicsImageRendererContext, rect: CGRect, count: Int) {
-        let config = UIImage.SymbolConfiguration(pointSize: 10, weight: .light)
         let starColor = UIColor(hex: 0xFFF9C4)
         let positions: [(CGFloat, CGFloat)] = [
             (0.1, 0.08), (0.3, 0.15), (0.5, 0.05), (0.7, 0.18),
@@ -318,38 +349,84 @@ enum FallbackRenderer {
         for i in 0..<min(count, positions.count) {
             let p = positions[i]
             let alpha = CGFloat.random(in: 0.5...1.0)
-            if let img = UIImage(systemName: "sparkle", withConfiguration: config) {
-                starColor.withAlphaComponent(alpha).setFill()
-                img.draw(at: CGPoint(x: rect.width * p.0, y: rect.height * p.1))
-            }
+            let cx = rect.width * p.0
+            let cy = rect.height * p.1
+            let r: CGFloat = CGFloat.random(in: 2...3.5)
+            starColor.withAlphaComponent(alpha).setFill()
+            UIBezierPath(ovalIn: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)).fill()
         }
+    }
+
+    /// パス描画の花（SF Symbol leaf.fill の代替）
+    private static func drawFlower(in ctx: UIGraphicsImageRendererContext,
+                                   at center: CGPoint, radius: CGFloat,
+                                   petalColor: UIColor, centerColor: UIColor) {
+        let petalCount = 5
+        petalColor.setFill()
+        for i in 0..<petalCount {
+            let angle = CGFloat(i) / CGFloat(petalCount) * .pi * 2
+            let px = center.x + cos(angle) * radius
+            let py = center.y + sin(angle) * radius
+            UIBezierPath(ovalIn: CGRect(x: px - radius * 0.55, y: py - radius * 0.55,
+                                         width: radius * 1.1, height: radius * 1.1)).fill()
+        }
+        // 中心
+        centerColor.setFill()
+        UIBezierPath(ovalIn: CGRect(x: center.x - radius * 0.45, y: center.y - radius * 0.45,
+                                     width: radius * 0.9, height: radius * 0.9)).fill()
     }
 
     private static func drawGroundDecorations(in ctx: UIGraphicsImageRendererContext, rect: CGRect, accent: UIColor) {
         let flowerPositions: [(CGFloat, CGFloat)] = [
-            (0.15, 0.82), (0.35, 0.78), (0.55, 0.85), (0.75, 0.80), (0.9, 0.83),
+            (0.12, 0.80), (0.28, 0.76), (0.48, 0.83), (0.68, 0.78), (0.85, 0.82),
         ]
-        let flowerConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        let flowerColors = [UIColor(hex: 0x66BB6A), UIColor(hex: 0x81C784), UIColor(hex: 0x4CAF50),
-                           UIColor(hex: 0xAED581), UIColor(hex: 0x66BB6A)]
+        let petalColorSets: [(UIColor, UIColor)] = [
+            (UIColor(hex: 0xF48FB1), UIColor(hex: 0xFFE082)),
+            (UIColor(hex: 0xCE93D8), UIColor(hex: 0xFFF9C4)),
+            (UIColor(hex: 0x80CBC4), UIColor(hex: 0xFFE082)),
+            (UIColor(hex: 0xFF8A65), UIColor(hex: 0xFFF9C4)),
+            (UIColor(hex: 0xAED581), UIColor(hex: 0xFFE082)),
+        ]
 
         for (i, pos) in flowerPositions.enumerated() {
-            let color = flowerColors[i % flowerColors.count]
-            if let img = UIImage(systemName: "leaf.fill", withConfiguration: flowerConfig) {
-                color.withAlphaComponent(0.5).setFill()
-                img.draw(at: CGPoint(x: rect.width * pos.0, y: rect.height * pos.1))
-            }
+            let cx = rect.width * pos.0
+            let cy = rect.height * pos.1
+            let r: CGFloat = 5.5
+            let colors = petalColorSets[i % petalColorSets.count]
+            drawFlower(in: ctx, at: CGPoint(x: cx, y: cy), radius: r,
+                       petalColor: colors.0.withAlphaComponent(0.75),
+                       centerColor: colors.1)
         }
 
-        let dotColors = [UIColor(hex: 0xF48FB1), UIColor(hex: 0xFFE082), UIColor(hex: 0xCE93D8), accent.withAlphaComponent(0.5)]
-        let dotPositions: [(CGFloat, CGFloat)] = [
-            (0.22, 0.84), (0.42, 0.8), (0.62, 0.86), (0.82, 0.82),
-            (0.28, 0.88), (0.5, 0.9), (0.7, 0.87),
+        // 地面の小さい草ドット
+        let grassPositions: [(CGFloat, CGFloat)] = [
+            (0.22, 0.86), (0.38, 0.84), (0.55, 0.88), (0.72, 0.85), (0.90, 0.87),
         ]
-        for (i, pos) in dotPositions.enumerated() {
-            let r: CGFloat = CGFloat.random(in: 3...5)
-            dotColors[i % dotColors.count].setFill()
-            UIBezierPath(ovalIn: CGRect(x: rect.width * pos.0, y: rect.height * pos.1, width: r * 2, height: r * 2)).fill()
+        UIColor(hex: 0x66BB6A).withAlphaComponent(0.45).setFill()
+        for pos in grassPositions {
+            let r: CGFloat = 3
+            UIBezierPath(ovalIn: CGRect(x: rect.width * pos.0, y: rect.height * pos.1,
+                                         width: r * 2, height: r * 2)).fill()
+        }
+    }
+
+    /// 周辺をわずかに暗くするビネット（絵本らしい温かみを演出）
+    private static func drawVignette(in ctx: UIGraphicsImageRendererContext, rect: CGRect) {
+        let cgCtx = ctx.cgContext
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let outerR = max(rect.width, rect.height) * 0.72
+        let innerR = max(rect.width, rect.height) * 0.3
+        let colors: [CGColor] = [
+            UIColor.clear.cgColor,
+            UIColor.black.withAlphaComponent(0.08).cgColor,
+        ]
+        let locs: [CGFloat] = [0, 1]
+        if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                     colors: colors as CFArray, locations: locs) {
+            cgCtx.drawRadialGradient(gradient,
+                                     startCenter: center, startRadius: innerR,
+                                     endCenter: center, endRadius: outerR,
+                                     options: [.drawsAfterEndLocation])
         }
     }
 
@@ -358,27 +435,33 @@ enum FallbackRenderer {
         let config = UIImage.SymbolConfiguration(pointSize: size, weight: .regular)
             .applying(UIImage.SymbolConfiguration(paletteColors: [color, color.withAlphaComponent(0.7)]))
         if let img = UIImage(systemName: name, withConfiguration: config) {
-            color.withAlphaComponent(0.15).setFill()
-            UIBezierPath(ovalIn: CGRect(x: center.x - img.size.width * 0.3, y: center.y + img.size.height * 0.35,
-                                         width: img.size.width * 0.6, height: img.size.height * 0.15)).fill()
+            // キャラクターの足元にソフトな影楕円
+            let shadowW = img.size.width * 0.7
+            let shadowH = img.size.height * 0.14
+            let shadowX = center.x - shadowW / 2
+            let shadowY = center.y + img.size.height * 0.42
+            UIColor.black.withAlphaComponent(0.12).setFill()
+            UIBezierPath(ovalIn: CGRect(x: shadowX, y: shadowY, width: shadowW, height: shadowH)).fill()
+
             img.draw(at: CGPoint(x: center.x - img.size.width / 2, y: center.y - img.size.height / 2))
         }
     }
+}
 
-    private static func drawTitle(_ title: String, in ctx: UIGraphicsImageRendererContext, rect: CGRect, color: UIColor) {
-        guard !title.isEmpty else { return }
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = .center
-        let bannerRect = CGRect(x: rect.width * 0.1, y: rect.height * 0.85, width: rect.width * 0.8, height: 50)
-        UIColor.white.withAlphaComponent(0.7).setFill()
-        UIBezierPath(roundedRect: bannerRect, cornerRadius: 25).fill()
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 20, weight: .bold),
-            .foregroundColor: color,
-            .paragraphStyle: paragraphStyle,
-        ]
-        let textRect = CGRect(x: bannerRect.minX + 10, y: bannerRect.minY + 12, width: bannerRect.width - 20, height: 30)
-        (title as NSString).draw(in: textRect, withAttributes: attrs)
+// MARK: - UIColor blend helper
+
+private extension UIColor {
+    func blended(with other: UIColor, alpha: CGFloat) -> UIColor {
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        other.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        return UIColor(
+            red: r1 * (1 - alpha) + r2 * alpha,
+            green: g1 * (1 - alpha) + g2 * alpha,
+            blue: b1 * (1 - alpha) + b2 * alpha,
+            alpha: 1.0
+        )
     }
 }
 

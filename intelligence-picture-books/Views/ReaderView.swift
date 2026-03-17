@@ -47,8 +47,13 @@ struct ReaderView: View {
         .toolbar { toolbarItems }
         .task { await viewModel.loadImages() }
         .sheet(item: $editingPage) { page in
-            EditPageTextSheet(initialText: page.text) { newText in
-                Task { await viewModel.updatePageText(newText, for: page) }
+            EditPageTextSheet(initialText: page.text) { newText, shouldRetryImage in
+                Task {
+                    await viewModel.updatePageText(newText, for: page)
+                    if shouldRetryImage {
+                        await viewModel.retryImage(for: page)
+                    }
+                }
             }
         }
         .confirmationDialog(

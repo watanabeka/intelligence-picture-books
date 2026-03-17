@@ -12,11 +12,11 @@ enum VisualStyle: String, Sendable, CaseIterable {
     var promptFragment: String {
         switch self {
         case .pastelWatercolor:
-            return "pastel watercolor style, soft blended colors, gentle brush strokes, light paper texture"
+            return "pastel watercolor illustration style, soft blended colors, gentle brush strokes, light paper texture, warm soft light"
         case .softCrayon:
-            return "soft crayon illustration style, warm textured strokes, rounded shapes, matte finish"
+            return "soft crayon illustration style, warm textured strokes, rounded shapes, matte finish, hand-drawn feel"
         case .bedtimeSoft:
-            return "soft dreamy illustration style, muted warm tones, gentle glow, cozy atmosphere"
+            return "soft dreamy illustration style, muted warm tones, gentle glow, cozy nighttime atmosphere, starlit"
         }
     }
 
@@ -34,26 +34,41 @@ struct CharacterSheet: Sendable, Equatable {
     var ageFeeling: String
     var bodyColor: String
     var earShape: String
+    var earSize: String = ""       // 例: "large", "small", "medium"
+    var faceShape: String = ""     // 例: "round", "chubby", "oval"
+    var eyeStyle: String = ""      // 例: "large round", "sparkly", "wide"
+    var tailShape: String = ""     // 例: "fluffy round", "short stub", "long bushy"
     var accessory: String
     var personality: String
 
     /// 画像プロンプトに注入するキャラクター記述（英語）
+    /// "CONSISTENT CHARACTER:" ヘッダーで AI に一貫性を強調する
     var promptFragment: String {
-        var parts: [String] = []
-        parts.append("same main character throughout")
-        if !species.isEmpty { parts.append("a \(species)") }
-        if !bodyColor.isEmpty { parts.append("\(bodyColor) colored body") }
-        if !earShape.isEmpty { parts.append("\(earShape) ears") }
-        if !accessory.isEmpty { parts.append("wearing \(accessory)") }
-        if !ageFeeling.isEmpty { parts.append("\(ageFeeling) appearance") }
-        return parts.joined(separator: ", ")
+        var traits: [String] = []
+        if !species.isEmpty { traits.append("a \(species)") }
+        if !bodyColor.isEmpty { traits.append("\(bodyColor) body") }
+
+        // 耳の詳細（size + shape を組み合わせ）
+        let earDesc = [earSize, earShape].filter { !$0.isEmpty }.joined(separator: " ")
+        if !earDesc.isEmpty { traits.append("\(earDesc) ears") }
+
+        if !faceShape.isEmpty { traits.append("\(faceShape) face") }
+        if !eyeStyle.isEmpty { traits.append("\(eyeStyle) eyes") }
+        if !tailShape.isEmpty { traits.append("\(tailShape) tail") }
+        if !accessory.isEmpty { traits.append("wearing \(accessory)") }
+        if !ageFeeling.isEmpty { traits.append("\(ageFeeling)") }
+
+        let traitStr = traits.joined(separator: ", ")
+        return "consistent main character throughout the story: \(traitStr)"
     }
 
-    /// mustKeepTraits: キャラ固定のために毎回含めるべき特徴
+    /// キャラ固定のために毎回含めるべき特徴（短縮版）
     var mustKeepTraits: [String] {
         var traits: [String] = []
         if !species.isEmpty { traits.append(species) }
         if !bodyColor.isEmpty { traits.append(bodyColor) }
+        let earDesc = [earSize, earShape].filter { !$0.isEmpty }.joined(separator: " ")
+        if !earDesc.isEmpty { traits.append("\(earDesc) ears") }
         if !accessory.isEmpty { traits.append(accessory) }
         return traits
     }
@@ -65,6 +80,10 @@ struct CharacterSheet: Sendable, Equatable {
         ageFeeling: "",
         bodyColor: "",
         earShape: "",
+        earSize: "",
+        faceShape: "",
+        eyeStyle: "",
+        tailShape: "",
         accessory: "",
         personality: ""
     )
@@ -105,7 +124,8 @@ struct PagePlan: Sendable, Identifiable {
     static let defaultForbiddenElements = [
         "text", "letters", "typography", "writing",
         "watermark", "logo", "signage", "book cover title text",
-        "words", "numbers", "caption"
+        "words", "numbers", "caption", "labels", "subtitles",
+        "billboards", "storefronts", "road signs", "posters"
     ]
 }
 
@@ -139,7 +159,8 @@ struct StoryPlan: Sendable {
         lines.append("Theme: \(theme)")
         lines.append("Style: \(visualStyle.rawValue)")
         lines.append("Character: \(characterSheet.mainCharacterName) (\(characterSheet.species))")
-        lines.append("  Body: \(characterSheet.bodyColor), Ear: \(characterSheet.earShape)")
+        lines.append("  Body: \(characterSheet.bodyColor), EarSize: \(characterSheet.earSize), EarShape: \(characterSheet.earShape)")
+        lines.append("  Face: \(characterSheet.faceShape), Eyes: \(characterSheet.eyeStyle), Tail: \(characterSheet.tailShape)")
         lines.append("  Accessory: \(characterSheet.accessory)")
         lines.append("Pages: \(pages.count)")
         for page in pages {

@@ -160,6 +160,34 @@ enum StoryPlanValidator {
             fixed.earShape = earMap[fixed.species] ?? "small"
         }
 
+        if fixed.earSize.isEmpty {
+            let earSizeMap = [
+                "rabbit": "large", "cat": "medium", "dog": "medium", "bear": "small",
+            ]
+            fixed.earSize = earSizeMap[fixed.species] ?? "medium"
+        }
+
+        if fixed.faceShape.isEmpty {
+            let faceMap = [
+                "rabbit": "oval", "cat": "round", "dog": "round", "bear": "round",
+            ]
+            fixed.faceShape = faceMap[fixed.species] ?? "round"
+        }
+
+        if fixed.eyeStyle.isEmpty {
+            let eyeMap = [
+                "rabbit": "large round", "cat": "sparkly", "dog": "large round", "bear": "round",
+            ]
+            fixed.eyeStyle = eyeMap[fixed.species] ?? "large round"
+        }
+
+        if fixed.tailShape.isEmpty {
+            let tailMap = [
+                "rabbit": "fluffy round", "cat": "long fluffy", "dog": "wagging", "bear": "short stub",
+            ]
+            fixed.tailShape = tailMap[fixed.species] ?? "short"
+        }
+
         if fixed.accessory.isEmpty {
             fixed.accessory = "a small blue scarf"
         }
