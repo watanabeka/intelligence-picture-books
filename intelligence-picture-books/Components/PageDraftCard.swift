@@ -1,73 +1,67 @@
 import SwiftUI
 
+/// 生成中/完了後のページカード（1列レイアウト用）
+/// 画像 → 本文 → 操作行 の縦構成
 struct PageDraftCard: View {
     let draft: PageDraft
-
-    @State private var bouncing = false
+    let totalPages: Int
+    var isCompleted: Bool = false
+    var onEdit: (() -> Void)?
+    var onRetry: (() -> Void)?
 
     var body: some View {
-        VStack(spacing: 8) {
-            if let img = draft.image {
-                Image(uiImage: img)
-                    .resizable()
-                    .aspectRatio(3/2, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-            } else if draft.isImageLoading {
-                bouncingBookPlaceholder
-            } else {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(AppTheme.primary.opacity(0.04))
-                    .aspectRatio(3/2, contentMode: .fit)
-                    .overlay {
-                        Image(systemName: "photo")
-                            .foregroundStyle(AppTheme.primary.opacity(0.2))
+        VStack(spacing: 12) {
+            // 画像エリア（16:9 統一）
+            ImageFrame(aspectRatio: ImageAspect.page) {
+                if let img = draft.image {
+                    ZStack {
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFill()
+
+                        // 完了済み画像には常に小さなリトライオーバーレイ
+                        if isCompleted, let onRetry {
+                            RetryOverlayButton(action: onRetry)
+                        }
                     }
+                } else if draft.isImageLoading {
+                    BouncingBookPlaceholder()
+                } else {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(AppTheme.primary.opacity(0.04))
+                        .overlay {
+                            Image(systemName: "photo")
+                                .foregroundStyle(AppTheme.primary.opacity(0.2))
+                        }
+                }
             }
 
+            // 本文
             Text(draft.text)
-                .font(.caption2)
-                .lineLimit(2)
-                .foregroundStyle(.secondary)
+                .font(.subheadline)
+                .lineSpacing(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 4)
 
-            Text("P.\(draft.pageNumber)")
-                .font(.caption2)
-                .foregroundStyle(AppTheme.primary.opacity(0.5))
-        }
-        .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(.white)
-                .shadow(color: AppTheme.primary.opacity(0.06), radius: 6, y: 2)
-        )
-    }
-
-    private var bouncingBookPlaceholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(AppTheme.primary.opacity(0.06))
-                .aspectRatio(3/2, contentMode: .fit)
-
-            VStack(spacing: 4) {
-                Image(systemName: "book.fill")
-                    .font(.system(size: 26, weight: .regular))
-                    .foregroundStyle(AppTheme.primary.opacity(0.55))
-                    .offset(y: bouncing ? -7 : 5)
-                    .animation(
-                        .easeInOut(duration: 0.65).repeatForever(autoreverses: true),
-                        value: bouncing
-                    )
-                    .onAppear { bouncing = true }
-                    .onDisappear { bouncing = false }
-
-                // 影: キャラクターが上にいるとき影は小さく、下にいるとき大きく
-                Ellipse()
-                    .fill(AppTheme.primary.opacity(0.1))
-                    .frame(width: bouncing ? 18 : 26, height: 5)
-                    .animation(
-                        .easeInOut(duration: 0.65).repeatForever(autoreverses: true),
-                        value: bouncing
-                    )
+            // 操作行（完了後のみ表示）
+            if isCompleted {
+                PageActionBar(
+                    pageNumber: draft.pageNumber,
+                    totalPages: totalPages,
+                    onEdit: onEdit,
+                    onRetry: onRetry
+                )
+            } else {
+                Text("P.\(draft.pageNumber)")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.primary.opacity(0.5))
             }
         }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white)
+                .shadow(color: AppTheme.primary.opacity(0.06), radius: 8, y: 3)
+        )
     }
 }

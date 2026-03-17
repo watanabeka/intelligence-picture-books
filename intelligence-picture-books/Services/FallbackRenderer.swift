@@ -43,7 +43,7 @@ enum FallbackRenderer {
         characterSheet: CharacterSheet,
         visualStyle: VisualStyle
     ) -> UIImage {
-        let size = CGSize(width: 600, height: 400)
+        let size = CGSize(width: 640, height: 360)
         let palette = paletteForStyle(visualStyle, mood: pagePlan.mood)
         let mainSymbol = symbolForSpecies(characterSheet.species)
         let extraSymbol = findSymbolFromKeyObjects(pagePlan.keyObjects)
