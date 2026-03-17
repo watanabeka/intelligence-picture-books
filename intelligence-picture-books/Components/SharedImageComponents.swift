@@ -4,8 +4,8 @@ import SwiftUI
 enum ImageAspect {
     /// ページ画像の統一アスペクト比（横長 16:9）
     static let page: CGFloat = 16 / 9
-    /// 表紙画像のアスペクト比（縦長 3:4）
-    static let cover: CGFloat = 3 / 4
+    /// 表紙画像のアスペクト比（ページと同じ横長 16:9）
+    static let cover: CGFloat = 16 / 9
 }
 
 // MARK: - 統一画像フレーム
@@ -34,7 +34,7 @@ struct RetryOverlayButton: View {
     let action: () -> Void
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        ZStack(alignment: .topTrailing) {
             Color.clear
             Button(action: action) {
                 ZStack {

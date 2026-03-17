@@ -144,7 +144,7 @@ struct ReaderView: View {
                         .resizable()
                         .scaledToFill()
 
-                    if state == .fallback {
+                    if state == .fallback || state == .ready {
                         RetryOverlayButton { Task { await viewModel.retryCover() } }
                     }
                 } else if state == .retrying {

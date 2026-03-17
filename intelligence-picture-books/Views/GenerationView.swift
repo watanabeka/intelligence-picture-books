@@ -91,9 +91,14 @@ struct GenerationView: View {
 
             ImageFrame(aspectRatio: ImageAspect.cover) {
                 if let cover = viewModel.coverImage {
-                    Image(uiImage: cover)
-                        .resizable()
-                        .scaledToFill()
+                    ZStack {
+                        Image(uiImage: cover)
+                            .resizable()
+                            .scaledToFill()
+                        if isCompleted {
+                            RetryOverlayButton { viewModel.retryCoverImage() }
+                        }
+                    }
                 } else if viewModel.phase.isGenerating {
                     BouncingBookPlaceholder()
                 } else {
@@ -113,7 +118,7 @@ struct GenerationView: View {
                     totalPages: viewModel.pageCount,
                     isCompleted: isCompleted,
                     onEdit: isCompleted ? { editingDraftIndex = index } : nil,
-                    onRetry: nil // 個別再生成はReaderView側（保存済みBook経由で行う）
+                    onRetry: isCompleted ? { viewModel.retryPageImage(at: index) } : nil
                 )
             }
         }

@@ -378,6 +378,54 @@ final class CreateBookViewModel {
         return book
     }
 
+    // MARK: - 個別画像リトライ（GenerationView 完了後）
+
+    func retryCoverImage() {
+        guard let plan = debugStoryPlan, !phase.isGenerating else { return }
+        Task {
+            coverImage = nil
+            let prompt = IllustrationPromptBuilder.buildCoverPrompt(
+                coverPlan: plan.coverPlan,
+                characterSheet: plan.characterSheet,
+                visualStyle: plan.visualStyle
+            )
+            if let img = try? await illustrationGenerator.generateImage(prompt: prompt) {
+                coverImage = img
+            } else {
+                coverImage = FallbackRenderer.renderCover(
+                    title: plan.title,
+                    characterSheet: plan.characterSheet,
+                    theme: plan.theme,
+                    visualStyle: plan.visualStyle
+                )
+            }
+        }
+    }
+
+    func retryPageImage(at index: Int) {
+        guard let plan = debugStoryPlan, !phase.isGenerating,
+              pageDrafts.indices.contains(index), index < plan.pages.count else { return }
+        Task {
+            pageDrafts[index].image = nil
+            pageDrafts[index].isImageLoading = true
+            let page = plan.pages[index]
+            let prompt = pageDrafts[index].finalImagePrompt
+            if let img = try? await illustrationGenerator.generateImage(prompt: prompt) {
+                pageDrafts[index].image = img
+                pageDrafts[index].imageState = .ready
+            } else {
+                pageDrafts[index].image = FallbackRenderer.renderPage(
+                    pageNumber: pageDrafts[index].pageNumber,
+                    pagePlan: page,
+                    characterSheet: plan.characterSheet,
+                    visualStyle: plan.visualStyle
+                )
+                pageDrafts[index].imageState = .fallback
+            }
+            pageDrafts[index].isImageLoading = false
+        }
+    }
+
     // MARK: - Debug Logging
 
     private func debugLog(_ message: String) {
