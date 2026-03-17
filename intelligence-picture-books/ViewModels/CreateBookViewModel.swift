@@ -46,6 +46,10 @@ final class CreateBookViewModel {
 
     /// デバッグ情報（ReaderView で表示可能）
     var debugStoryPlan: StoryPlan?
+    /// ImageCreator の利用可否（デバッグ用）
+    var imageCreatorAvailability: ImageCreatorAvailability = .available
+    /// 最後に発生した画像生成エラー（デバッグ用）
+    var lastImageError: String?
 
     let availablePageCounts = [5, 8, 10, 12, 15]
 
@@ -204,6 +208,15 @@ final class CreateBookViewModel {
 
     private func generateImages(plan: StoryPlan) async {
         imagePlaygroundUnavailable = false
+        lastImageError = nil
+
+        // 事前チェック: ImageCreator が使えるか確認（シミュレーター・言語・モデル非対応を早期検出）
+        let availability = await illustrationGenerator.checkAvailability()
+        imageCreatorAvailability = availability
+        if !availability.isUsable {
+            print("⚠️ [Pipeline] ImageCreator 非対応: \(availability.reason) — 全画像をフォールバックで生成")
+            imagePlaygroundUnavailable = true
+        }
 
         // 表紙生成（本文ページとは独立）
         phase = .generatingCover
@@ -264,6 +277,7 @@ final class CreateBookViewModel {
             } catch {
                 if Task.isCancelled { return }
                 debugLog("Cover: attempt \(attempt) failed: \(error)")
+                lastImageError = String(describing: error)
                 let desc = String(describing: error).lowercased()
                 if desc.contains("unavailable") || desc.contains("initialization") || desc.contains("初期化") || desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
                     imagePlaygroundUnavailable = true
@@ -314,6 +328,7 @@ final class CreateBookViewModel {
             } catch {
                 if Task.isCancelled { return }
                 debugLog("Page \(draft.pageNumber): attempt \(attempt) failed: \(error)")
+                lastImageError = String(describing: error)
                 let desc = String(describing: error).lowercased()
                 if desc.contains("unavailable") || desc.contains("initialization") || desc.contains("初期化") || desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
                     imagePlaygroundUnavailable = true

@@ -129,6 +129,11 @@ struct ReaderView: View {
             coverImageArea
             Text(viewModel.book.title).font(.title.bold()).multilineTextAlignment(.center)
             Spacer()
+            #if DEBUG
+            if showDebugOverlay {
+                coverDebugInfo
+            }
+            #endif
         }
         .padding(32)
     }
@@ -220,6 +225,34 @@ struct ReaderView: View {
     // MARK: - Debug
 
     #if DEBUG
+    private var coverDebugInfo: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Debug Info (Cover)").font(.caption.bold()).foregroundStyle(.orange)
+            debugRow("ImageCreator Available", "\(viewModel.isImageCreatorAvailable)")
+            if let reason = viewModel.imageCreatorUnavailableReason {
+                debugRow("Unavailable Reason", reason)
+            }
+            debugRow("Cover State", "\(viewModel.coverImageState)")
+            debugRow("Cover Retry Count", "\(viewModel.coverRetryCount)")
+            if let err = viewModel.lastImageError {
+                debugRow("Last Error", err)
+            }
+            if !viewModel.coverRetryPrompt.isEmpty {
+                debugRow("Cover Retry Prompt", viewModel.coverRetryPrompt)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.black.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                )
+        )
+    }
+
     private func debugInfo(for page: BookPage) -> some View {
         let retryCount = viewModel.pageRetryCounts[page.pageNumber] ?? 0
         let retryPrompt = viewModel.pageRetryPrompts[page.pageNumber]
@@ -227,10 +260,17 @@ struct ReaderView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("Debug Info").font(.caption.bold()).foregroundStyle(.orange)
+            debugRow("ImageCreator Available", "\(viewModel.isImageCreatorAvailable)")
+            if let reason = viewModel.imageCreatorUnavailableReason {
+                debugRow("Unavailable Reason", reason)
+            }
             debugRow("Mood", page.mood)
             debugRow("Is Fallback", "\(page.isFallback)")
             debugRow("Image State", "\(String(describing: state))")
             debugRow("Retry Count", "\(retryCount)")
+            if let err = viewModel.lastImageError {
+                debugRow("Last Error", err)
+            }
             if let rp = retryPrompt {
                 debugRow("Retry Prompt", rp)
             } else if !page.finalImagePrompt.isEmpty {

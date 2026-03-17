@@ -6,6 +6,43 @@ import ImagePlayground
 /// IllustrationPromptBuilder が構築した完成済みプロンプトを受け取って画像を生成する。
 final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecked Sendable {
 
+    // MARK: - Availability Check
+
+    /// ImageCreator / ImagePlayground が使えるか事前チェック。
+    /// シミュレーター・モデル未ダウンロード・言語非対応を早期検出してログに出す。
+    func checkAvailability() async -> ImageCreatorAvailability {
+        #if targetEnvironment(simulator)
+        print("ℹ️ [ImageCreator] シミュレーター環境 — ImageCreator は利用不可")
+        return .simulator
+        #else
+        do {
+            let creator = try await ImageCreator()
+            if creator.availableStyles.isEmpty {
+                print("⚠️ [ImageCreator] availableStyles が空 — モデル未ダウンロードの可能性")
+                return .noStylesAvailable
+            }
+            print("✅ [ImageCreator] 利用可能 (styles: \(creator.availableStyles))")
+            return .available
+        } catch {
+            let desc = String(describing: error).lowercased()
+            print("⚠️ [ImageCreator] 利用可否チェック失敗: \(error)")
+            if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
+                print("  → 原因: デバイス言語が非対応 — Settings > General > Language で English に変更してください")
+                return .unsupportedLanguage
+            }
+            if desc.contains("unavailable") || desc.contains("initialization") || desc.contains("初期化")
+                || desc.contains("asset") || desc.contains("model") {
+                print("  → 原因: モデル未ダウンロードまたはデバイス非対応")
+                return .modelUnavailable
+            }
+            print("  → 原因: 不明 (\(desc))")
+            return .unknown(String(describing: error))
+        }
+        #endif
+    }
+
+    // MARK: - Generate
+
     func generateImage(prompt: String) async throws -> UIImage {
         let safePrompt = ensureTextFreeConstraint(prompt)
         return try await generateWithRetry(
@@ -14,23 +51,25 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
         )
     }
 
-    /// 安全フィルターエラー時にフォールバックプロンプトで1回リトライ
+    /// 安全フィルターエラー時にフォールバックプロンプトで1回リトライ。
+    /// 永続的エラー（言語非対応など）はリトライせず即 throw。
     private func generateWithRetry(prompt: String, fallbackPrompt: String) async throws -> UIImage {
         do {
             return try await generateSingleImage(prompt: prompt)
         } catch {
-            let desc = String(describing: error).lowercased()
-            // 言語非対応は永続的エラー（リトライ不要 — デバイス言語が日本語のため）
-            if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
-                print("⚠️ [ImageCreator] 言語非対応エラー: デバイス言語が ImagePlayground 非対応です")
+            let category = classify(error)
+            print("⚠️ [ImageCreator] 生成失敗 [\(category.logLabel)]: \(error)")
+            switch category {
+            case .permanent:
+                // デバイス非対応・言語非対応など — リトライしても無意味
+                throw error
+            case .safetyFilter:
+                // コンテンツフィルター — フォールバックプロンプトでリトライ
+                print("ℹ️ [ImageCreator] 安全フィルター → フォールバックプロンプトでリトライ")
+                return try await generateSingleImage(prompt: fallbackPrompt)
+            case .transient:
                 throw error
             }
-            let isUnsafe = desc.contains("unsafe") || desc.contains("safety") || desc.contains("guardrail")
-            if isUnsafe {
-                print("⚠️ [ImageCreator] 安全フィルター検出。フォールバックプロンプトでリトライ")
-                return try await generateSingleImage(prompt: fallbackPrompt)
-            }
-            throw error
         }
     }
 
@@ -39,8 +78,9 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
         do {
             creator = try await ImageCreator()
         } catch {
-            print("⚠️ [ImageCreator] 初期化失敗: \(error)")
-            throw GenerationError.imageGenerationFailed(underlying: "ImageCreator初期化失敗: \(error.localizedDescription)")
+            let category = classify(error)
+            print("⚠️ [ImageCreator] 初期化失敗 [\(category.logLabel)]: \(error)")
+            throw error
         }
 
         print("ℹ️ [ImageCreator] availableStyles: \(creator.availableStyles)")
@@ -51,7 +91,7 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
         } else if let first = creator.availableStyles.first {
             style = first
         } else {
-            print("⚠️ [ImageCreator] 利用可能なスタイルなし")
+            print("⚠️ [ImageCreator] 利用可能なスタイルなし [device_not_supported]")
             throw GenerationError.imageGenerationFailed(underlying: "利用可能な画像スタイルがありません")
         }
 
@@ -62,11 +102,48 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
             print("✅ [ImageCreator] 画像生成成功")
             return UIImage(cgImage: result.cgImage)
         }
-        print("⚠️ [ImageCreator] ストリームが空で終了")
+        print("⚠️ [ImageCreator] ストリームが空で終了 [empty_stream]")
         throw GenerationError.imageGenerationFailed(underlying: "画像が生成されませんでした")
     }
 
-    /// プロンプトに文字禁止が含まれていなければ追加する
+    // MARK: - Error Classification
+
+    private enum ErrorCategory {
+        case permanent    // デバイス非対応・言語非対応など — リトライ不要
+        case safetyFilter // コンテンツフィルター — フォールバックプロンプトでリトライ
+        case transient    // 一時的エラー — 呼び出し元でリトライ
+
+        var logLabel: String {
+            switch self {
+            case .permanent:    return "permanent"
+            case .safetyFilter: return "safety_filter"
+            case .transient:    return "transient"
+            }
+        }
+    }
+
+    private func classify(_ error: Error) -> ErrorCategory {
+        let desc = String(describing: error).lowercased()
+        if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
+            print("  → 原因: デバイス言語が非対応 (unsupportedLanguage) — 永続的エラー")
+            return .permanent
+        }
+        if desc.contains("unavailable") || desc.contains("initialization") || desc.contains("初期化")
+            || desc.contains("asset") || desc.contains("model") {
+            print("  → 原因: モデル未ダウンロードまたはデバイス非対応 — 永続的エラー")
+            return .permanent
+        }
+        if desc.contains("unsafe") || desc.contains("safety") || desc.contains("guardrail") {
+            print("  → 原因: 安全フィルター — フォールバックプロンプトでリトライ")
+            return .safetyFilter
+        }
+        print("  → 原因: 不明 (transient) [\(desc)]")
+        return .transient
+    }
+
+    // MARK: - Helpers
+
+    /// プロンプトに文字禁止制約が含まれていなければ追加する
     private func ensureTextFreeConstraint(_ prompt: String) -> String {
         let lower = prompt.lowercased()
         if lower.contains("no text") && lower.contains("no letters") {

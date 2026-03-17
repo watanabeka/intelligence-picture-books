@@ -18,6 +18,12 @@ final class ReaderViewModel {
     var coverRetryCount: Int = 0
     /// デバッグ用: 表紙の最後のリトライプロンプト
     var coverRetryPrompt: String = ""
+    /// デバッグ用: ImageCreator が利用可能か
+    var isImageCreatorAvailable = true
+    /// デバッグ用: ImageCreator の利用不可理由
+    var imageCreatorUnavailableReason: String?
+    /// デバッグ用: 最後に発生した画像生成エラー
+    var lastImageError: String?
 
     private let repository: any BookPersisting
     let illustrationGenerator: any IllustrationGenerating
@@ -33,6 +39,16 @@ final class ReaderViewModel {
     // MARK: - 画像ロード
 
     func loadImages() async {
+        // ImageCreator の利用可否を一度だけ確認（シミュレーター・言語・モデル非対応を早期検出）
+        if imageCreatorUnavailableReason == nil {
+            let avail = await illustrationGenerator.checkAvailability()
+            isImageCreatorAvailable = avail.isUsable
+            if !avail.isUsable {
+                imageCreatorUnavailableReason = avail.reason
+                debugLog("ImageCreator 非対応: \(avail.reason)")
+            }
+        }
+
         coverImageState = .loading
         if let name = book.coverImageLocalName {
             coverImage = await repository.loadImage(name: name)
@@ -93,10 +109,14 @@ final class ReaderViewModel {
                 debugLog("Page \(pageNum): retry success on attempt \(attempt)")
                 return
             } catch {
+                lastImageError = String(describing: error)
                 debugLog("Page \(pageNum): retry attempt \(attempt) failed: \(error)")
                 let desc = String(describing: error).lowercased()
-                if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
-                    debugLog("Page \(pageNum): ImagePlayground 言語非対応 — フォールバックに移行")
+                if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language")
+                    || desc.contains("unavailable") || desc.contains("initialization") {
+                    isImageCreatorAvailable = false
+                    imageCreatorUnavailableReason = imageCreatorUnavailableReason ?? desc
+                    debugLog("Page \(pageNum): ImageCreator 永続的エラー — フォールバックに移行")
                     break
                 }
             }
@@ -147,10 +167,14 @@ final class ReaderViewModel {
                 debugLog("Cover: retry success on attempt \(attempt)")
                 return
             } catch {
+                lastImageError = String(describing: error)
                 debugLog("Cover: retry attempt \(attempt) failed: \(error)")
                 let desc = String(describing: error).lowercased()
-                if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language") {
-                    debugLog("Cover: ImagePlayground 言語非対応 — フォールバックに移行")
+                if desc.contains("unsupportedlanguage") || desc.contains("unsupported_language")
+                    || desc.contains("unavailable") || desc.contains("initialization") {
+                    isImageCreatorAvailable = false
+                    imageCreatorUnavailableReason = imageCreatorUnavailableReason ?? desc
+                    debugLog("Cover: ImageCreator 永続的エラー — フォールバックに移行")
                     break
                 }
             }
