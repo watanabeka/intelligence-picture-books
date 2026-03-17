@@ -4,8 +4,12 @@ struct LibraryView: View {
     @State private var viewModel: LibraryViewModel
     @Environment(\.dismiss) private var dismiss
 
+    /// ライブラリからも個別ページのリトライができるようにジェネレーターを保持する
+    private let illustrationGenerator: any IllustrationGenerating
+
     init(repository: any BookPersisting) {
         _viewModel = State(initialValue: LibraryViewModel(repository: repository))
+        self.illustrationGenerator = ImageCreatorIllustrationGenerator()
     }
 
     var body: some View {
@@ -30,11 +34,9 @@ struct LibraryView: View {
     private var emptyLibrary: some View {
         ScrollView {
             VStack(spacing: 0) {
-                // ファンタジー空背景 + 本イラスト
                 ZStack(alignment: .bottom) {
                     FantasySkyBackground(height: 280)
 
-                    // 本のイラスト
                     ZStack {
                         Circle()
                             .fill(Color.white.opacity(0.15))
@@ -52,7 +54,6 @@ struct LibraryView: View {
                             )
                             .shadow(color: AppTheme.primary.opacity(0.3), radius: 8, y: 4)
 
-                        // 装飾の星
                         Image(systemName: "sparkle")
                             .font(.system(size: 16))
                             .foregroundStyle(AppTheme.accent)
@@ -91,7 +92,11 @@ struct LibraryView: View {
     private var bookList: some View {
         List(viewModel.books, id: \.id) { book in
             NavigationLink {
-                ReaderView(book: book, repository: viewModel.repository)
+                ReaderView(
+                    book: book,
+                    repository: viewModel.repository,
+                    illustrationGenerator: illustrationGenerator
+                )
             } label: {
                 BookRow(book: book)
             }

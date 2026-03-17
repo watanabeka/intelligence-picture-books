@@ -4,6 +4,7 @@ struct GenerationView: View {
     @Bindable var viewModel: CreateBookViewModel
     @Binding var showReader: Bool
     @State private var navigateToReader = false
+    @State private var showRegenerateConfirm = false
 
     var body: some View {
         ScrollView {
@@ -12,7 +13,7 @@ struct GenerationView: View {
                 if !viewModel.generatedTitle.isEmpty { titleCard }
                 if viewModel.coverImage != nil || viewModel.phase.isGenerating { coverSection }
                 pagesGrid
-                if viewModel.phase == .completed { readButton }
+                if viewModel.phase == .completed { completionButtons }
             }
             .padding(24)
         }
@@ -32,10 +33,32 @@ struct GenerationView: View {
         }
         .navigationDestination(isPresented: $navigateToReader) {
             if let book = viewModel.completedBook {
-                ReaderView(book: book, repository: viewModel.repository)
+                ReaderView(
+                    book: book,
+                    repository: viewModel.repository,
+                    illustrationGenerator: viewModel.illustrationGenerator,
+                    onRegenerate: {
+                        navigateToReader = false
+                        viewModel.startGeneration()
+                    }
+                )
             }
         }
+        .confirmationDialog(
+            "絵本をもういちどつくりますか？",
+            isPresented: $showRegenerateConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("もういちど作る", role: .destructive) {
+                viewModel.startGeneration()
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("いまの絵本を上書きして、もういちど作りますか？")
+        }
     }
+
+    // MARK: - Progress Header
 
     private var progressHeader: some View {
         VStack(spacing: 12) {
@@ -107,7 +130,29 @@ struct GenerationView: View {
         }
     }
 
-    private var readButton: some View {
-        MagicButton(title: "よむ") { navigateToReader = true }
+    // MARK: - Completion Buttons
+
+    private var completionButtons: some View {
+        VStack(spacing: 12) {
+            MagicButton(title: "よむ") { navigateToReader = true }
+
+            Button {
+                showRegenerateConfirm = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                    Text("作り直す")
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(AppTheme.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    Capsule()
+                        .fill(AppTheme.primary.opacity(0.07))
+                )
+            }
+            .buttonStyle(.plain)
+        }
     }
 }
