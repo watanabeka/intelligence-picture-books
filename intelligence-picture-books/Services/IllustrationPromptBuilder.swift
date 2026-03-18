@@ -1,84 +1,135 @@
 import Foundation
 
 /// PagePlan + CharacterSheet + VisualStyle から画像生成用プロンプトを組み立てるサービス。
-/// narration を直接画像生成に渡さず、専用の構造化プロンプトを構築する。
+///
+/// **4層構造:**
+/// - Layer ①  Scene    — シーン・ムード・オブジェクト・カメラ・場所
+/// - Layer ②  Character — 視覚的アンカー（species/color/ears/face/eyes/accessory）+ シーンモード
+/// - Layer ③  Style     — pastel watercolor 絵本スタイル
+/// - Layer ④  Constraint — "no text in image" のみ（最小限）
 enum IllustrationPromptBuilder {
 
-    // MARK: - 固定プロンプト要素
+    // MARK: - Fixed clauses
 
-    /// すべての画像に含める文字禁止フレーズ
-    private static let textFreeClause =
-        "no text, no letters, no typography, no writing, no watermark, no logo, no signage, no book cover title text, no words, no numbers, no caption"
+    /// Layer ③: 絵本スタイル基盤フレーズ（全プロンプト共通）
+    private static let styleBaseClause =
+        "children's picture book page illustration, soft rounded shapes, warm and friendly"
 
-    /// すべての画像に含める絵本スタイルフレーズ
-    private static let pictureBookClause =
-        "children's picture book illustration, gentle and safe for young children, simple shapes, soft outlines"
+    /// Layer ④: テキスト禁止（最小限）
+    private static let constraintClause = "no text in image"
+
+    /// 表紙構図指示
+    private static let coverCompositionClause =
+        "centered character, full body view, beautiful background, eye-catching composition"
+
+    // MARK: - Sanitize constants
+
+    private static let dangerousPatterns: [String] = [
+        "book cover", "front cover", "back cover", "book title", "title text",
+        "book jacket", "dust jacket", "cover art", "book spine", "book page",
+        "billboard", "storefront", "shop sign", "road sign", "street sign",
+        "advertisement", "poster with", "neon sign", "banner with",
+        "label on", "text saying", "words saying", "it says", "caption",
+        "titled", "entitled", "inscribed", "written on",
+    ]
+
+    private static let textTriggers = [
+        "sign", "poster", "billboard", "label", "text", "book", "page", "title"
+    ]
+
+    // MARK: - Character anchor (Layer ②)
+
+    /// キャラクターを視覚的アンカーとして自然な英語で記述する。
+    /// 「same exact」系の命令を使わず、具体的な外見の積み重ねで一貫性を確保する。
+    static func buildCharacterAnchor(_ sheet: CharacterSheet) -> String {
+        var parts: [String] = []
+
+        // コア外見（種族 + 体色）
+        if !sheet.species.isEmpty && !sheet.bodyColor.isEmpty {
+            parts.append("a \(sheet.bodyColor) \(sheet.species)")
+        } else if !sheet.species.isEmpty {
+            parts.append("a \(sheet.species)")
+        }
+
+        // 耳（size + shape を合わせて1フレーズ）
+        let earDesc = [sheet.earSize, sheet.earShape].filter { !$0.isEmpty }.joined(separator: " ")
+        if !earDesc.isEmpty { parts.append("with \(earDesc) ears") }
+
+        // 顔・目
+        if !sheet.faceShape.isEmpty { parts.append("\(sheet.faceShape) face") }
+        if !sheet.eyeStyle.isEmpty  { parts.append("\(sheet.eyeStyle) eyes") }
+
+        // アクセサリー（強いビジュアルアンカー）
+        if !sheet.accessory.isEmpty { parts.append("wearing \(sheet.accessory)") }
+
+        return parts.joined(separator: ", ")
+    }
+
+    /// リトライ用キャラクターアンカー（通常版と同じ内容を繰り返して強調）
+    private static func buildRetryCharacterAnchor(_ sheet: CharacterSheet) -> String {
+        var parts: [String] = []
+        if !sheet.species.isEmpty && !sheet.bodyColor.isEmpty {
+            parts.append("the same \(sheet.bodyColor) \(sheet.species)")
+        } else if !sheet.species.isEmpty {
+            parts.append("the same \(sheet.species)")
+        }
+        if !sheet.accessory.isEmpty { parts.append("wearing \(sheet.accessory) as in all other pages") }
+        let earDesc = [sheet.earSize, sheet.earShape].filter { !$0.isEmpty }.joined(separator: " ")
+        if !earDesc.isEmpty { parts.append("\(earDesc) ears") }
+        return parts.joined(separator: ", ")
+    }
+
+    /// SceneMode に応じたキャラクター人数フレーズ（自然な表現）
+    private static func sceneModeClause(for page: PagePlan) -> String {
+        switch page.sceneMode {
+        case .solo: return "the character is alone in the scene"
+        case .duo:  return "the character is with one friend in the scene"
+        }
+    }
 
     // MARK: - Page Prompt
 
-    /// ページ用の画像プロンプトを構築する。
-    /// 毎回 characterSheet, visualStyle, 文字禁止, カメラ等を含める。
+    /// ページ用プロンプトを4層構造で構築する。
     static func buildPagePrompt(
         page: PagePlan,
         characterSheet: CharacterSheet,
-        visualStyle: VisualStyle,
-        storyTitle: String
+        visualStyle: VisualStyle
     ) -> String {
         var segments: [String] = []
 
-        // 1. 絵本スタイルの固定文
-        segments.append(pictureBookClause)
+        // Layer ①: Scene
+        let safeScene = buildSafeScene(page.illustrationPrompt, fallbackSetting: "in a cheerful natural setting")
+        if !safeScene.isEmpty { segments.append("scene: \(safeScene)") }
 
-        // 2. ビジュアルスタイル
+        if !page.mood.isEmpty {
+            segments.append("\(IllustrationPromptTranslator.moodToEnglish(page.mood)) atmosphere")
+        }
+        if !page.keyObjects.isEmpty {
+            let safe = page.keyObjects.filter { !isTextTrigger($0) }
+            if !safe.isEmpty { segments.append("featuring: \(safe.joined(separator: ", "))") }
+        }
+        if !page.camera.isEmpty { segments.append(page.camera) }
+        if !page.location.isEmpty {
+            let safeLoc = IllustrationPromptTranslator.sanitizeJapanese(sanitizeForIllustration(page.location))
+            if !safeLoc.isEmpty { segments.append("setting: \(safeLoc)") }
+        }
+
+        // Layer ②: Character
+        segments.append(buildCharacterAnchor(characterSheet))
+        segments.append(sceneModeClause(for: page))
+
+        // Layer ③: Style
+        segments.append(styleBaseClause)
         segments.append(visualStyle.promptFragment)
 
-        // 3. キャラクター記述（毎回注入）
-        segments.append(characterSheet.promptFragment)
-
-        // 4. シーン記述
-        if !page.illustrationPrompt.isEmpty {
-            segments.append("scene: \(page.illustrationPrompt)")
-        }
-
-        // 5. カメラ
-        if !page.camera.isEmpty {
-            segments.append("camera: \(page.camera)")
-        }
-
-        // 6. 場所
-        if !page.location.isEmpty {
-            segments.append("setting: \(page.location)")
-        }
-
-        // 7. ムード
-        if !page.mood.isEmpty {
-            let moodEnglish = moodToEnglish(page.mood)
-            segments.append("\(moodEnglish) atmosphere")
-        }
-
-        // 8. キーオブジェクト
-        if !page.keyObjects.isEmpty {
-            segments.append("featuring: \(page.keyObjects.joined(separator: ", "))")
-        }
-
-        // 9. 連続性ノート
-        if !page.continuityNotes.isEmpty {
-            segments.append("continuity: \(page.continuityNotes)")
-        }
-
-        // 10. ページ位置情報
-        segments.append("page \(page.pageNumber) of a picture book")
-
-        // 11. 文字禁止（最後に強調）
-        segments.append(textFreeClause)
+        // Layer ④: Constraint
+        segments.append(constraintClause)
 
         return segments.joined(separator: ", ")
     }
 
     // MARK: - Cover Prompt
 
-    /// 表紙用の画像プロンプトを構築する。
-    /// 表紙は本文ページとは独立。タイトル文字は画像に入れない。
     static func buildCoverPrompt(
         coverPlan: CoverPlan,
         characterSheet: CharacterSheet,
@@ -86,84 +137,132 @@ enum IllustrationPromptBuilder {
     ) -> String {
         var segments: [String] = []
 
-        // 1. 表紙であることを明示
-        segments.append("children's picture book front cover illustration")
+        let safeCover = IllustrationPromptTranslator.sanitizeJapanese(
+            sanitizeForIllustration(coverPlan.coverPrompt)
+        )
+        if !safeCover.isEmpty { segments.append("scene: \(safeCover)") }
 
-        // 2. ビジュアルスタイル
-        segments.append(visualStyle.promptFragment)
-
-        // 3. キャラクター（メイン）
-        segments.append(characterSheet.promptFragment)
-
-        // 4. カバープロンプト
-        if !coverPlan.coverPrompt.isEmpty {
-            segments.append(coverPlan.coverPrompt)
-        }
-
-        // 5. ワールドキーワード
         if !coverPlan.worldKeywords.isEmpty {
-            segments.append("world elements: \(coverPlan.worldKeywords.joined(separator: ", "))")
+            let safe = coverPlan.worldKeywords.filter { !isTextTrigger($0) }
+            if !safe.isEmpty { segments.append("world: \(safe.joined(separator: ", "))") }
         }
 
-        // 6. 明るく魅力的な表紙
-        segments.append("warm, inviting, eye-catching composition, centered character")
-
-        // 7. 文字禁止（表紙テキストは UI レイヤーで重ねる）
-        segments.append(textFreeClause)
+        segments.append(buildCharacterAnchor(characterSheet))
+        segments.append(coverCompositionClause)
+        segments.append(styleBaseClause)
+        segments.append(visualStyle.promptFragment)
+        segments.append(constraintClause)
 
         return segments.joined(separator: ", ")
     }
 
-    // MARK: - Fallback Prompt
+    // MARK: - Retry Prompts
 
-    /// フォールバック用の簡易プロンプトを構築する。
-    /// FallbackRenderer でも本文とモチーフを一致させる。
-    static func buildFallbackPagePrompt(
+    /// ページ画像リトライ用。差分強調 + 最低限の一貫性維持のみ。強い命令は使わない。
+    static func buildRetryPagePrompt(
         page: PagePlan,
-        characterSheet: CharacterSheet
+        characterSheet: CharacterSheet,
+        visualStyle: VisualStyle
     ) -> String {
-        var parts: [String] = []
-        parts.append(characterSheet.species)
-        if !page.keyObjects.isEmpty {
-            parts.append(contentsOf: page.keyObjects.prefix(3))
+        var segments: [String] = []
+
+        // Layer ①: Scene（同じシーン内容を再提示）
+        let safeScene = buildSafeScene(page.illustrationPrompt, fallbackSetting: "in a gentle peaceful setting")
+        if !safeScene.isEmpty { segments.append("scene: \(safeScene)") }
+
+        if !page.mood.isEmpty {
+            segments.append("\(IllustrationPromptTranslator.moodToEnglish(page.mood)) atmosphere")
         }
-        parts.append(page.mood)
+        if !page.keyObjects.isEmpty {
+            let safe = page.keyObjects.filter { !isTextTrigger($0) }
+            if !safe.isEmpty { segments.append("featuring: \(safe.joined(separator: ", "))") }
+        }
+        if !page.camera.isEmpty { segments.append(page.camera) }
+
+        // Layer ②: Character（外見を2回繰り返して差分強調 — 命令口調は使わない）
+        segments.append(buildCharacterAnchor(characterSheet))
+        segments.append(sceneModeClause(for: page))
+        segments.append(buildRetryCharacterAnchor(characterSheet))
+
+        // Layer ③: Style
+        segments.append(styleBaseClause)
+        segments.append(visualStyle.promptFragment)
+
+        // Layer ④: Constraint
+        segments.append(constraintClause)
+
+        return segments.joined(separator: ", ")
+    }
+
+    /// 表紙画像リトライ用。
+    static func buildRetryCoverPrompt(
+        coverPlan: CoverPlan,
+        characterSheet: CharacterSheet,
+        visualStyle: VisualStyle
+    ) -> String {
+        var segments: [String] = []
+
+        let safeCover = IllustrationPromptTranslator.sanitizeJapanese(
+            sanitizeForIllustration(coverPlan.coverPrompt)
+        )
+        if !safeCover.isEmpty { segments.append("scene: \(safeCover)") }
+
+        segments.append(buildCharacterAnchor(characterSheet))
+        segments.append(buildRetryCharacterAnchor(characterSheet))
+        segments.append(coverCompositionClause)
+        segments.append(styleBaseClause)
+        segments.append(visualStyle.promptFragment)
+        segments.append(constraintClause)
+
+        return segments.joined(separator: ", ")
+    }
+
+    // MARK: - Fallback Prompts
+
+    static func buildFallbackPagePrompt(page: PagePlan, characterSheet: CharacterSheet) -> String {
+        var parts: [String] = []
+        if !characterSheet.species.isEmpty { parts.append(characterSheet.species) }
+        if !characterSheet.bodyColor.isEmpty { parts.append(characterSheet.bodyColor) }
+        parts.append(contentsOf: page.keyObjects.prefix(3).filter { !isTextTrigger($0) })
+        parts.append(IllustrationPromptTranslator.moodToEnglish(page.mood))
         return parts.joined(separator: " ")
     }
 
-    /// フォールバック用の表紙プロンプト
-    static func buildFallbackCoverPrompt(
-        characterSheet: CharacterSheet,
-        theme: String
-    ) -> String {
-        return "\(characterSheet.species) \(theme)"
+    static func buildFallbackCoverPrompt(characterSheet: CharacterSheet, theme: String) -> String {
+        "\(characterSheet.species) \(characterSheet.bodyColor) \(IllustrationPromptTranslator.translateTheme(theme))"
     }
 
-    // MARK: - Mood Translation
+    // MARK: - Sanitize
 
-    /// 日本語のムードを英語に変換
-    private static func moodToEnglish(_ mood: String) -> String {
-        let moodMap: [(japanese: String, english: String)] = [
-            ("わくわく", "exciting and adventurous"),
-            ("たのしい", "cheerful and happy"),
-            ("にぎやか", "lively and bustling"),
-            ("どきどき", "thrilling and suspenseful"),
-            ("ゆうき", "brave and courageous"),
-            ("しんみり", "calm and contemplative"),
-            ("おだやか", "peaceful and serene"),
-            ("ふしぎ", "mysterious and wondrous"),
-            ("きらきら", "sparkling and magical"),
-            ("やさしい", "gentle and tender"),
-            ("あたたかい", "warm and cozy"),
-            ("ほっこり", "heartwarming"),
-            ("かなしい", "bittersweet and touching"),
-            ("うれしい", "joyful"),
-        ]
-        for entry in moodMap {
-            if mood.contains(entry.japanese) {
-                return entry.english
-            }
+    private static func sanitizeForIllustration(_ text: String) -> String {
+        guard !text.isEmpty else { return text }
+        var result = text
+        for pattern in dangerousPatterns {
+            result = result.replacingOccurrences(of: pattern, with: "", options: .caseInsensitive)
         }
-        return "gentle and warm"
+        result = result.components(separatedBy: .whitespaces).filter { !$0.isEmpty }.joined(separator: " ")
+        return result
+    }
+
+    // MARK: - Private Helpers
+
+    private static func buildSafeScene(_ raw: String, fallbackSetting: String) -> String {
+        let result = IllustrationPromptTranslator.sanitizeJapaneseVerbose(sanitizeForIllustration(raw))
+        switch result.quality {
+        case .good:
+            return result.text
+        case .tooShort:
+            let enriched = "\(result.text) \(fallbackSetting)"
+            print("ℹ️ [Builder] Scene too short → enriched: \"\(enriched)\"")
+            return enriched
+        case .empty:
+            print("ℹ️ [Builder] Scene empty → using fallback setting")
+            return fallbackSetting
+        }
+    }
+
+    private static func isTextTrigger(_ word: String) -> Bool {
+        let lower = word.lowercased()
+        return textTriggers.contains(where: { lower.contains($0) })
     }
 }

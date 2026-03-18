@@ -71,6 +71,12 @@ enum StoryPlanValidator {
         // ページ間の一貫性チェック
         corrected = enforcePageContinuity(corrected)
 
+        // SceneMode の推定（LLM が設定しなかった場合に narration から補完）
+        corrected = inferSceneModes(corrected)
+
+        // カメラアングルの重複排除
+        corrected = assignDistinctCameras(corrected)
+
         // 表紙プランの検証
         corrected = validateCoverPlan(corrected)
 
@@ -123,16 +129,26 @@ enum StoryPlanValidator {
 
         // species が空の場合、テーマからの推定
         if fixed.species.isEmpty {
-            if lower.contains("うさぎ") || lower.contains("rabbit") {
+            if lower.contains("うさぎ") || lower.contains("rabbit") || lower.contains("bunny") {
                 fixed.species = "rabbit"
-            } else if lower.contains("ねこ") || lower.contains("cat") {
+            } else if lower.contains("ねこ") || lower.contains("cat") || lower.contains("kitten") {
                 fixed.species = "cat"
-            } else if lower.contains("いぬ") || lower.contains("dog") {
+            } else if lower.contains("いぬ") || lower.contains("dog") || lower.contains("puppy") {
                 fixed.species = "dog"
             } else if lower.contains("くま") || lower.contains("bear") {
                 fixed.species = "bear"
+            } else if lower.contains("とり") || lower.contains("bird") || lower.contains("ひよこ") {
+                fixed.species = "bird"
+            } else if lower.contains("トナカイ") || lower.contains("reindeer") || lower.contains("しか") || lower.contains("deer") {
+                fixed.species = "reindeer"
+            } else if lower.contains("きつね") || lower.contains("fox") {
+                fixed.species = "fox"
+            } else if lower.contains("うま") || lower.contains("horse") || lower.contains("pony") {
+                fixed.species = "horse"
+            } else if lower.contains("ぞう") || lower.contains("elephant") {
+                fixed.species = "elephant"
             } else {
-                fixed.species = "rabbit" // デフォルトはうさぎ
+                fixed.species = "bear" // デフォルト（うさぎ固定を避ける）
             }
         }
 
@@ -140,24 +156,59 @@ enum StoryPlanValidator {
             let nameMap = [
                 "rabbit": "ミミ", "cat": "ミケ", "dog": "ポチ",
                 "bear": "クマタ", "bird": "ピピ", "fish": "プク",
+                "reindeer": "ルル", "fox": "コン", "horse": "ポニー", "elephant": "ゾロ",
             ]
-            fixed.mainCharacterName = nameMap[fixed.species] ?? "ミミ"
+            fixed.mainCharacterName = nameMap[fixed.species] ?? "コロ"
         }
 
         if fixed.bodyColor.isEmpty {
             let colorMap = [
                 "rabbit": "white", "cat": "orange tabby", "dog": "brown",
                 "bear": "light brown", "bird": "yellow", "fish": "blue",
+                "reindeer": "warm brown", "fox": "orange", "horse": "chestnut brown", "elephant": "gray",
             ]
-            fixed.bodyColor = colorMap[fixed.species] ?? "white"
+            fixed.bodyColor = colorMap[fixed.species] ?? "light brown"
         }
 
         if fixed.earShape.isEmpty {
             let earMap = [
                 "rabbit": "long floppy", "cat": "pointed", "dog": "floppy",
-                "bear": "round small",
+                "bear": "round small", "reindeer": "small round", "fox": "pointed",
+                "horse": "upright", "elephant": "large round",
             ]
-            fixed.earShape = earMap[fixed.species] ?? "small"
+            fixed.earShape = earMap[fixed.species] ?? "small round"
+        }
+
+        if fixed.earSize.isEmpty {
+            let earSizeMap = [
+                "rabbit": "large", "cat": "medium", "dog": "medium", "bear": "small",
+                "reindeer": "small", "fox": "medium", "horse": "medium", "elephant": "large",
+            ]
+            fixed.earSize = earSizeMap[fixed.species] ?? "medium"
+        }
+
+        if fixed.faceShape.isEmpty {
+            let faceMap = [
+                "rabbit": "oval", "cat": "round", "dog": "round", "bear": "round",
+                "reindeer": "long oval", "fox": "pointed", "horse": "long", "elephant": "round",
+            ]
+            fixed.faceShape = faceMap[fixed.species] ?? "round"
+        }
+
+        if fixed.eyeStyle.isEmpty {
+            let eyeMap = [
+                "rabbit": "large round", "cat": "sparkly", "dog": "large round", "bear": "round",
+                "reindeer": "large gentle", "fox": "bright", "horse": "large gentle", "elephant": "small kind",
+            ]
+            fixed.eyeStyle = eyeMap[fixed.species] ?? "large round"
+        }
+
+        if fixed.tailShape.isEmpty {
+            let tailMap = [
+                "rabbit": "fluffy round", "cat": "long fluffy", "dog": "wagging", "bear": "short stub",
+                "reindeer": "short white", "fox": "long bushy", "horse": "long flowing", "elephant": "short thin",
+            ]
+            fixed.tailShape = tailMap[fixed.species] ?? "short"
         }
 
         if fixed.accessory.isEmpty {
@@ -241,6 +292,64 @@ enum StoryPlanValidator {
                     notes.append("objects from previous scene: \(prev.keyObjects.prefix(3).joined(separator: ", "))")
                 }
                 corrected.pages[i].continuityNotes = notes.joined(separator: "; ")
+            }
+        }
+        return corrected
+    }
+
+    // MARK: - SceneMode Inference
+
+    /// 既に `.duo` が設定されているページは維持し、`.solo` のページのみ narration から推定する。
+    private static func inferSceneModes(_ plan: StoryPlan) -> StoryPlan {
+        var corrected = plan
+        let duoKeywords = [
+            "いっしょ", "ふたり", "ともだち", "あった", "であった", "やってきた",
+            "friend", "together", "meet", "companion", "with a ", "and a ",
+            "greet", "introduce", "side by side"
+        ]
+        for i in corrected.pages.indices {
+            guard corrected.pages[i].sceneMode == .solo else { continue }
+            let text = (corrected.pages[i].narration + " " + corrected.pages[i].illustrationPrompt).lowercased()
+            if duoKeywords.contains(where: { text.contains($0) }) {
+                corrected.pages[i].sceneMode = .duo
+                print("ℹ️ [Validator] P\(corrected.pages[i].pageNumber): sceneMode → duo (inferred)")
+            }
+        }
+        return corrected
+    }
+
+    // MARK: - Camera Deduplication
+
+    /// ページごとに異なるカメラアングルを割り当てる。
+    /// 連続するページに同じカメラが設定されていた場合、プールから別のアングルを選択する。
+    private static let cameraPool: [String] = [
+        "medium shot",
+        "wide establishing shot",
+        "close-up",
+        "three-quarter view",
+        "eye-level shot",
+        "low angle shot",
+        "overhead view",
+    ]
+
+    private static func assignDistinctCameras(_ plan: StoryPlan) -> StoryPlan {
+        var corrected = plan
+        var recentCameras: [String] = []
+
+        for i in corrected.pages.indices {
+            let current = corrected.pages[i].camera.trimmingCharacters(in: .whitespaces)
+            let isRepeat = recentCameras.last == current
+            let isEmpty = current.isEmpty
+
+            if isEmpty || isRepeat {
+                let recent = Set(recentCameras.suffix(2))
+                let available = cameraPool.filter { !recent.contains($0) }
+                let replacement = available.first ?? cameraPool[i % cameraPool.count]
+                corrected.pages[i].camera = replacement
+                recentCameras.append(replacement)
+                print("ℹ️ [Validator] P\(corrected.pages[i].pageNumber): camera \(isEmpty ? "assigned" : "deduplicated") → '\(replacement)'")
+            } else {
+                recentCameras.append(current)
             }
         }
         return corrected

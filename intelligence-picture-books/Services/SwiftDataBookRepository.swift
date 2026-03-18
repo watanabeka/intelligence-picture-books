@@ -28,6 +28,27 @@ actor SwiftDataBookRepository: BookPersisting {
         return UIImage(data: data)
     }
 
+    func updatePageText(_ text: String, pageId: UUID) async throws {
+        let pages = try modelContext.fetch(
+            FetchDescriptor<BookPage>(predicate: #Predicate { $0.id == pageId })
+        )
+        if let page = pages.first {
+            page.text = text
+            try modelContext.save()
+        }
+    }
+
+    func updatePageImageName(_ name: String, pageId: UUID) async throws {
+        let pages = try modelContext.fetch(
+            FetchDescriptor<BookPage>(predicate: #Predicate { $0.id == pageId })
+        )
+        if let page = pages.first {
+            page.imageLocalName = name
+            page.isFallback = false
+            try modelContext.save()
+        }
+    }
+
     private var imageDirectory: URL {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("BookImages", isDirectory: true)

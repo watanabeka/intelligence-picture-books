@@ -12,7 +12,7 @@ struct StoryPlanOutput {
     @Guide(description: "Main character's name in Japanese (e.g. ミミ, ポチ)")
     var characterName: String
 
-    @Guide(description: "Main character's species in English (e.g. rabbit, cat, dog, bear)")
+    @Guide(description: "Main character's species in English. Choose an animal that fits the story theme (e.g. rabbit, cat, dog, bear, bird, fox, reindeer, penguin, elephant, horse, deer)")
     var characterSpecies: String
 
     @Guide(description: "Main character's body color in English (e.g. white, orange tabby, brown)")
@@ -20,6 +20,12 @@ struct StoryPlanOutput {
 
     @Guide(description: "Main character's distinguishing accessory in English (e.g. a small blue scarf, a red ribbon)")
     var characterAccessory: String
+
+    @Guide(description: "Main character's ear size in English (e.g. large, small, medium)")
+    var characterEarSize: String
+
+    @Guide(description: "Main character's eye style in English (e.g. large round, sparkly, wide)")
+    var characterEyeStyle: String
 
     @Guide(description: "All pages of the story in order")
     var pages: [StoryPagePlanOutput]
@@ -44,6 +50,12 @@ struct StoryPagePlanOutput {
 
     @Guide(description: "Key visual objects in the scene in English, comma-separated (e.g. 'flowers, butterflies, path')")
     var keyObjects: String
+
+    @Guide(description: "Camera angle for the illustration. Vary across pages for visual interest. Choose one: 'medium shot', 'wide establishing shot', 'close-up', 'three-quarter view', 'eye-level shot', 'low angle shot'")
+    var cameraAngle: String
+
+    @Guide(description: "True if the scene includes a companion/friend character alongside the main character. False if the main character is alone.")
+    var hasFriend: Bool
 }
 
 /// タイトルとキャラクターのみ生成用（フォールバック tier 3）
@@ -55,7 +67,7 @@ struct TitleAndCharacterOutput {
     @Guide(description: "Main character's name in Japanese")
     var characterName: String
 
-    @Guide(description: "Main character's species in English (e.g. rabbit, cat, dog)")
+    @Guide(description: "Main character's species in English. Choose an animal that fits the story theme (e.g. rabbit, cat, dog, bear, fox, reindeer, bird, penguin, elephant)")
     var characterSpecies: String
 
     @Guide(description: "Main character's body color in English (e.g. white, brown)")
@@ -63,6 +75,12 @@ struct TitleAndCharacterOutput {
 
     @Guide(description: "Main character's accessory in English (e.g. a small blue scarf)")
     var characterAccessory: String
+
+    @Guide(description: "Main character's ear size in English (e.g. large, small, medium)")
+    var characterEarSize: String
+
+    @Guide(description: "Main character's eye style in English (e.g. large round, sparkly, wide)")
+    var characterEyeStyle: String
 }
 
 /// 1ページ分の生成用（フォールバック tier 3）
@@ -79,6 +97,12 @@ struct SinglePagePlanOutput {
 
     @Guide(description: "Key visual objects in English, comma-separated")
     var keyObjects: String
+
+    @Guide(description: "Camera angle for the illustration: 'medium shot', 'wide establishing shot', 'close-up', 'three-quarter view', 'eye-level shot', or 'low angle shot'")
+    var cameraAngle: String
+
+    @Guide(description: "True if a friend/companion appears in this scene alongside the main character.")
+    var hasFriend: Bool
 }
 
 // MARK: - FoundationModelsStoryGenerator
@@ -169,7 +193,7 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
         let charSession = LanguageModelSession(instructions: """
             You are a children's picture book author.
             Given a theme, create a title and main character for a picture book.
-            The character should be a cute animal that fits the theme.
+            Choose a cute animal species that best fits the theme — for example reindeer for a Christmas/winter theme, penguin for a cold/snow theme, fox for a forest theme, fish or penguin for an ocean theme. Do NOT default to rabbit unless the theme specifically involves rabbits.
             """)
 
         let charResponse = try await charSession.respond(
@@ -186,6 +210,8 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
             ageFeeling: "young and cute",
             bodyColor: charOutput.characterBodyColor,
             earShape: "",
+            earSize: charOutput.characterEarSize,
+            eyeStyle: charOutput.characterEyeStyle,
             accessory: charOutput.characterAccessory,
             personality: "curious and kind"
         )
@@ -236,11 +262,12 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
                 narration: pageOutput.narration,
                 illustrationPrompt: pageOutput.sceneDescription,
                 forbiddenElements: PagePlan.defaultForbiddenElements,
-                camera: "medium shot",
+                camera: pageOutput.cameraAngle.isEmpty ? "medium shot" : pageOutput.cameraAngle,
                 location: "",
                 mood: pageOutput.mood,
                 keyObjects: pageOutput.keyObjects.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) },
-                continuityNotes: previousContext.isEmpty ? "" : "continues from previous scene"
+                continuityNotes: previousContext.isEmpty ? "" : "continues from previous scene",
+                sceneMode: pageOutput.hasFriend ? .duo : .solo
             )
             pages.append(pagePlan)
 
@@ -259,7 +286,7 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
                 subtitle: nil,
                 mainCharacterDescription: characterSheet.promptFragment,
                 worldKeywords: [],
-                coverPrompt: "a \(charOutput.characterBodyColor) \(charOutput.characterSpecies) wearing \(charOutput.characterAccessory) in a \(theme) world"
+                coverPrompt: "a \(charOutput.characterBodyColor) \(charOutput.characterSpecies) wearing \(charOutput.characterAccessory) in a \(IllustrationPromptTranslator.translateTheme(theme)) world"
             )
         )
 
@@ -275,6 +302,8 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
             ageFeeling: "young and cute",
             bodyColor: output.characterBodyColor,
             earShape: "",
+            earSize: output.characterEarSize,
+            eyeStyle: output.characterEyeStyle,
             accessory: output.characterAccessory,
             personality: "curious and kind"
         )
@@ -286,11 +315,12 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
                 narration: pageOutput.narration,
                 illustrationPrompt: pageOutput.sceneDescription,
                 forbiddenElements: PagePlan.defaultForbiddenElements,
-                camera: "medium shot",
+                camera: pageOutput.cameraAngle.isEmpty ? "medium shot" : pageOutput.cameraAngle,
                 location: "",
                 mood: pageOutput.mood,
                 keyObjects: pageOutput.keyObjects.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) },
-                continuityNotes: ""
+                continuityNotes: "",
+                sceneMode: pageOutput.hasFriend ? .duo : .solo
             )
         }
 
@@ -299,7 +329,7 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
             subtitle: nil,
             mainCharacterDescription: characterSheet.promptFragment,
             worldKeywords: [],
-            coverPrompt: "a \(output.characterBodyColor) \(output.characterSpecies) wearing \(output.characterAccessory) in a \(theme) world"
+            coverPrompt: "a \(output.characterBodyColor) \(output.characterSpecies) wearing \(output.characterAccessory) in a \(IllustrationPromptTranslator.translateTheme(theme)) world"
         )
 
         return StoryPlan(
@@ -321,7 +351,7 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
             You must create a complete story plan with a consistent main character.
 
             CRITICAL RULES:
-            - The main character must be a cute animal (rabbit, cat, dog, bear, bird, etc.)
+            - The main character must be a cute animal that fits the story theme. Choose the species based on the theme — for example, if the theme involves reindeer or Christmas, use reindeer; if winter, use a penguin or bear; if forest, use a fox or bear; if ocean, use a fish or penguin. Do NOT default to rabbit unless the theme specifically calls for it.
             - Give the character a Japanese name and describe their appearance in English
             - The character must appear in EVERY page's scene description
             - Each page has exactly ONE event - do not cram multiple events
@@ -329,6 +359,8 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
             - Scene descriptions must be SPECIFIC and CONCRETE for illustration
             - Bad example: "a happy scene" (too vague)
             - Good example: "a small white rabbit picking red flowers in a sunny meadow with butterflies around"
+            - Vary cameraAngle across pages for visual interest (do not use 'medium shot' for every page)
+            - Set hasFriend to true only when a companion character visibly appears alongside the main character
 
             \(styleGuide.asPromptInstructions)
             """

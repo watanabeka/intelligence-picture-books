@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import SwiftData
+import ImagePlayground
 
 enum GenerationPhase: Equatable {
     case idle
@@ -26,9 +27,14 @@ struct PageDraft: Identifiable {
     var illustrationPrompt: String
     var finalImagePrompt: String
     var mood: String
+    var camera: String = ""
+    var sceneMode: SceneMode = .solo
+    var styleClauseHint: String = ""
     var image: UIImage?
     var isImageLoading = false
+    var imageState: PageImageState = .loading
     var quality: GeneratedIllustrationQuality = .unknown
+    var retryCount: Int = 0
 }
 
 @MainActor
@@ -45,11 +51,16 @@ final class CreateBookViewModel {
 
     /// デバッグ情報（ReaderView で表示可能）
     var debugStoryPlan: StoryPlan?
+    /// ImageCreator の利用可否（デバッグ用）
+    var imageCreatorAvailability: ImageCreatorAvailability = .available
+    /// 最後に発生した画像生成エラー（デバッグ用）
+    var lastImageError: String?
 
     let availablePageCounts = [5, 8, 10, 12, 15]
 
     private let storyGenerator: any StoryGenerating
-    private let illustrationGenerator: any IllustrationGenerating
+    /// internal でアクセス可能にして GenerationView → ReaderView に渡す
+    let illustrationGenerator: any IllustrationGenerating
     let repository: any BookPersisting
     private var generationTask: Task<Void, Never>?
 
@@ -181,24 +192,45 @@ final class CreateBookViewModel {
             let finalPrompt = IllustrationPromptBuilder.buildPagePrompt(
                 page: page,
                 characterSheet: plan.characterSheet,
-                visualStyle: plan.visualStyle,
-                storyTitle: plan.title
+                visualStyle: plan.visualStyle
             )
             return PageDraft(
                 pageNumber: page.pageNumber,
                 text: page.narration,
                 illustrationPrompt: page.illustrationPrompt,
                 finalImagePrompt: finalPrompt,
-                mood: page.mood
+                mood: page.mood,
+                camera: page.camera,
+                sceneMode: page.sceneMode,
+                styleClauseHint: plan.visualStyle.promptFragment,
+                imageState: .loading
             )
         }
     }
 
-    // MARK: - STEP 3-4: 画像生成
+    // MARK: - STEP 3-4: 画像生成（2回リトライ → フォールバック）
 
-    private var usingFallbackImages = false
+    /// ImagePlayground が利用できないことが確定したら true にして以降はフォールバックに直行
+    private var imagePlaygroundUnavailable = false
+    /// AI で生成した画像枚数（表紙 + ページ）
+    private var aiImageCount = 0
+    /// フォールバックで生成した画像枚数
+    private var fallbackImageCount = 0
 
     private func generateImages(plan: StoryPlan) async {
+        imagePlaygroundUnavailable = false
+        lastImageError = nil
+        aiImageCount = 0
+        fallbackImageCount = 0
+
+        // 事前チェック: ImageCreator が使えるか確認（シミュレーター・言語・モデル非対応を早期検出）
+        let availability = await illustrationGenerator.checkAvailability()
+        imageCreatorAvailability = availability
+        if !availability.isUsable {
+            print("⚠️ [Pipeline] ImageCreator 非対応: \(availability.reason) — fallbackOnly モードで生成")
+            imagePlaygroundUnavailable = true
+        }
+
         // 表紙生成（本文ページとは独立）
         phase = .generatingCover
         progressText = "表紙を描いています..."
@@ -210,20 +242,7 @@ final class CreateBookViewModel {
         )
         debugLog("Cover prompt: \(coverPrompt)")
 
-        do {
-            coverImage = try await illustrationGenerator.generateImage(prompt: coverPrompt)
-        } catch {
-            if Task.isCancelled { return }
-            usingFallbackImages = true
-            print("⚠️ [画像生成] 表紙生成失敗: \(error)")
-            progressText = "Image Playground が利用できないため、イラスト画像で代替します"
-            coverImage = FallbackRenderer.renderCover(
-                title: plan.title,
-                characterSheet: plan.characterSheet,
-                theme: plan.theme,
-                visualStyle: plan.visualStyle
-            )
-        }
+        await generateCoverImage(plan: plan, prompt: coverPrompt)
 
         // 各ページの画像生成
         let total = pageDrafts.count
@@ -231,54 +250,190 @@ final class CreateBookViewModel {
             guard !Task.isCancelled else { return }
 
             let draft = pageDrafts[i]
+            guard i < plan.pages.count else { continue }
             let page = plan.pages[i]
+
             pageDrafts[i].isImageLoading = true
+            pageDrafts[i].imageState = .loading
             phase = .generatingImages(current: i + 1, total: total)
 
             let finalPrompt = draft.finalImagePrompt
             debugLog("Page \(draft.pageNumber) prompt: \(finalPrompt)")
 
-            if usingFallbackImages {
-                // フォールバック: キャラクターシートを使って一貫した画像を生成
+            if imagePlaygroundUnavailable {
                 pageDrafts[i].image = FallbackRenderer.renderPage(
                     pageNumber: draft.pageNumber,
                     pagePlan: page,
                     characterSheet: plan.characterSheet,
                     visualStyle: plan.visualStyle
                 )
+                pageDrafts[i].imageState = .fallback
                 pageDrafts[i].quality = .fallback
-                progressText = "\(draft.pageNumber)/\(pageCount) ページの挿絵ができました"
+                fallbackImageCount += 1
+                progressText = "\(draft.pageNumber)/\(pageCount) ページのイラストができました"
             } else {
-                progressText = "\(draft.pageNumber)/\(pageCount) ページの挿絵を描いています..."
-                do {
-                    let img = try await illustrationGenerator.generateImage(prompt: finalPrompt)
-                    guard !Task.isCancelled else { return }
-                    pageDrafts[i].image = img
-                    pageDrafts[i].quality = GeneratedIllustrationQuality(
-                        hasPossibleTextArtifacts: false,
-                        consistencyScore: 0.8,
-                        matchesSceneKeywords: true,
-                        usedFallback: false
-                    )
-                } catch {
-                    if Task.isCancelled { return }
-                    pageDrafts[i].image = FallbackRenderer.renderPage(
-                        pageNumber: draft.pageNumber,
-                        pagePlan: page,
-                        characterSheet: plan.characterSheet,
-                        visualStyle: plan.visualStyle
-                    )
-                    pageDrafts[i].quality = .fallback
+                await generatePageImage(index: i, draft: draft, page: page, plan: plan, prompt: finalPrompt)
+            }
+
+            pageDrafts[i].isImageLoading = false
+        }
+    }
+
+    /// `unsupportedLanguage` が発生した場合、最小限英語プロンプトで1度だけ確認リトライする。
+    /// - 英語プロンプトで成功 → AI 生成として扱う
+    /// - 最小限英語でも失敗 → `unsupportedLanguage` を再スロー（呼び出し元がフラグ設定）
+    private func generateWithLanguageRetry(prompt: String, characterSheet: CharacterSheet) async throws -> UIImage {
+        do {
+            return try await illustrationGenerator.generateImage(prompt: prompt)
+        } catch {
+            guard let ice = error as? ImageCreator.Error, case .unsupportedLanguage = ice else {
+                throw error
+            }
+            debugLog("⚠️ unsupportedLanguage 検出 — 最小限英語プロンプトで確認リトライ中...")
+            debugLog("   理由: プロンプト内容の問題か、デバイス言語の問題かを切り分ける")
+            let minimalPrompt = IllustrationPromptTranslator.buildMinimalEnglishPrompt(
+                characterSheet: characterSheet
+            )
+            debugLog("   最小プロンプト: \(minimalPrompt)")
+            return try await illustrationGenerator.generateImage(prompt: minimalPrompt)
+            // 再び unsupportedLanguage がスローされれば呼び出し元で imagePlaygroundUnavailable = true
+        }
+    }
+
+    private func generateCoverImage(plan: StoryPlan, prompt: String) async {
+        var success = false
+        for attempt in 1...2 {
+            guard !Task.isCancelled else { return }
+            do {
+                coverImage = try await generateWithLanguageRetry(
+                    prompt: prompt,
+                    characterSheet: plan.characterSheet
+                )
+                success = true
+                aiImageCount += 1
+                debugLog("Cover: success on attempt \(attempt)")
+                break
+            } catch {
+                if Task.isCancelled { return }
+                debugLog("Cover: attempt \(attempt) failed: \(error)")
+                lastImageError = String(describing: error)
+                if let ice = error as? ImageCreator.Error, case .unsupportedLanguage = ice {
+                    // 最小限英語でも失敗 → デバイス言語の問題として確定
+                    debugLog("⚠️ 最小限英語でも unsupportedLanguage → imagePlaygroundUnavailable = true")
+                    imagePlaygroundUnavailable = true
+                    break
+                }
+                if attempt < 2 { progressText = "表紙をもう一度試しています..." }
+            }
+        }
+
+        if !success {
+            imagePlaygroundUnavailable = true
+            fallbackImageCount += 1
+            // フォールバックは失敗ではなくイラスト生成として自然に表現
+            progressText = "イラスト画像で表紙を作成しています..."
+            coverImage = FallbackRenderer.renderCover(
+                title: plan.title,
+                characterSheet: plan.characterSheet,
+                theme: plan.theme,
+                visualStyle: plan.visualStyle
+            )
+        }
+    }
+
+    private func generatePageImage(
+        index: Int,
+        draft: PageDraft,
+        page: PagePlan,
+        plan: StoryPlan,
+        prompt: String
+    ) async {
+        progressText = "\(draft.pageNumber)/\(pageCount) ページの挿絵を描いています..."
+        var success = false
+
+        for attempt in 1...2 {
+            guard !Task.isCancelled else { return }
+            do {
+                let img = try await generateWithLanguageRetry(
+                    prompt: prompt,
+                    characterSheet: plan.characterSheet
+                )
+                guard !Task.isCancelled else { return }
+                pageDrafts[index].image = img
+                pageDrafts[index].imageState = .ready
+                pageDrafts[index].quality = GeneratedIllustrationQuality(
+                    hasPossibleTextArtifacts: false,
+                    consistencyScore: 0.8,
+                    matchesSceneKeywords: true,
+                    usedFallback: false
+                )
+                aiImageCount += 1
+                debugLog("Page \(draft.pageNumber): success attempt \(attempt)")
+                success = true
+                break
+            } catch {
+                if Task.isCancelled { return }
+                debugLog("Page \(draft.pageNumber): attempt \(attempt) failed: \(error)")
+                lastImageError = String(describing: error)
+                if let ice = error as? ImageCreator.Error, case .unsupportedLanguage = ice {
+                    debugLog("⚠️ ページ\(draft.pageNumber): 最小限英語でも unsupportedLanguage → 確定")
+                    imagePlaygroundUnavailable = true
+                    break
+                }
+                if attempt < 2 {
+                    progressText = "\(draft.pageNumber)/\(pageCount) ページ もう一度試しています..."
                 }
             }
-            pageDrafts[i].isImageLoading = false
+        }
+
+        if !success {
+            pageDrafts[index].image = FallbackRenderer.renderPage(
+                pageNumber: draft.pageNumber,
+                pagePlan: page,
+                characterSheet: plan.characterSheet,
+                visualStyle: plan.visualStyle
+            )
+            pageDrafts[index].imageState = .fallback
+            pageDrafts[index].quality = .fallback
+            fallbackImageCount += 1
         }
     }
 
     // MARK: - Save
 
     private func saveBook(plan: StoryPlan) async throws -> Book {
-        let book = Book(theme: theme, pageCount: pageCount, title: plan.title, isComplete: true)
+        // 画像生成モードを集計
+        let totalImages = 1 + pageDrafts.count
+        let mode: ImageGenerationMode
+        if fallbackImageCount == totalImages {
+            mode = .fallbackOnly
+        } else if aiImageCount == totalImages {
+            mode = .fullAI
+        } else {
+            mode = .mixed
+        }
+        debugLog("Image stats — AI: \(aiImageCount), fallback: \(fallbackImageCount), mode: \(mode.rawValue)")
+
+        let cs = plan.characterSheet
+        let book = Book(
+            theme: theme,
+            pageCount: pageCount,
+            title: plan.title,
+            isComplete: true,
+            characterSpecies: cs.species,
+            characterBodyColor: cs.bodyColor,
+            characterAccessory: cs.accessory,
+            characterEarShape: cs.earShape,
+            characterEarSize: cs.earSize,
+            characterFaceShape: cs.faceShape,
+            characterEyeStyle: cs.eyeStyle,
+            characterTailShape: cs.tailShape,
+            characterPersonality: cs.personality,
+            visualStyleRaw: plan.visualStyle.rawValue,
+            generatedImageCount: aiImageCount,
+            fallbackImageCount: fallbackImageCount,
+            imageGenerationModeRaw: mode.rawValue
+        )
 
         if let cover = coverImage {
             let name = "\(book.id.uuidString)_cover.png"
@@ -292,7 +447,8 @@ final class CreateBookViewModel {
                 text: draft.text,
                 illustrationPrompt: draft.illustrationPrompt,
                 finalImagePrompt: draft.finalImagePrompt,
-                mood: draft.mood
+                mood: draft.mood,
+                isFallback: draft.imageState == .fallback
             )
             if let img = draft.image {
                 let name = "\(book.id.uuidString)_page\(draft.pageNumber).png"
@@ -304,6 +460,59 @@ final class CreateBookViewModel {
 
         try await repository.saveBook(book)
         return book
+    }
+
+    // MARK: - 個別画像リトライ（GenerationView 完了後）
+
+    func retryCoverImage() {
+        guard let plan = debugStoryPlan, !phase.isGenerating else { return }
+        Task {
+            coverImage = nil
+            let prompt = IllustrationPromptBuilder.buildCoverPrompt(
+                coverPlan: plan.coverPlan,
+                characterSheet: plan.characterSheet,
+                visualStyle: plan.visualStyle
+            )
+            if let img = try? await illustrationGenerator.generateImage(prompt: prompt) {
+                coverImage = img
+            } else {
+                coverImage = FallbackRenderer.renderCover(
+                    title: plan.title,
+                    characterSheet: plan.characterSheet,
+                    theme: plan.theme,
+                    visualStyle: plan.visualStyle
+                )
+            }
+        }
+    }
+
+    func retryPageImage(at index: Int) {
+        guard let plan = debugStoryPlan, !phase.isGenerating,
+              pageDrafts.indices.contains(index), index < plan.pages.count else { return }
+        Task {
+            pageDrafts[index].image = nil
+            pageDrafts[index].isImageLoading = true
+            pageDrafts[index].retryCount += 1
+            let page = plan.pages[index]
+            let retryPrompt = IllustrationPromptBuilder.buildRetryPagePrompt(
+                page: page,
+                characterSheet: plan.characterSheet,
+                visualStyle: plan.visualStyle
+            )
+            if let img = try? await illustrationGenerator.generateImage(prompt: retryPrompt) {
+                pageDrafts[index].image = img
+                pageDrafts[index].imageState = .ready
+            } else {
+                pageDrafts[index].image = FallbackRenderer.renderPage(
+                    pageNumber: pageDrafts[index].pageNumber,
+                    pagePlan: page,
+                    characterSheet: plan.characterSheet,
+                    visualStyle: plan.visualStyle
+                )
+                pageDrafts[index].imageState = .fallback
+            }
+            pageDrafts[index].isImageLoading = false
+        }
     }
 
     // MARK: - Debug Logging

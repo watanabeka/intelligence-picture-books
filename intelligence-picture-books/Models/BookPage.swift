@@ -10,6 +10,8 @@ final class BookPage {
     var illustrationPrompt: String
     var finalImagePrompt: String
     var mood: String
+    /// ImageCreator が失敗してフォールバック画像が使われたか
+    var isFallback: Bool
     var book: Book?
 
     init(
@@ -19,7 +21,8 @@ final class BookPage {
         imageLocalName: String? = nil,
         illustrationPrompt: String = "",
         finalImagePrompt: String = "",
-        mood: String = ""
+        mood: String = "",
+        isFallback: Bool = false
     ) {
         self.id = id
         self.pageNumber = pageNumber
@@ -28,5 +31,6 @@ final class BookPage {
         self.illustrationPrompt = illustrationPrompt
         self.finalImagePrompt = finalImagePrompt
         self.mood = mood
+        self.isFallback = isFallback
     }
 }
