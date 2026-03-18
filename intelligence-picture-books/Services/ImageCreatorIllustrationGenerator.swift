@@ -195,9 +195,9 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
     /// プロンプトに文字禁止制約が含まれていなければ追加する
     private func ensureTextFreeConstraint(_ prompt: String) -> String {
         let lower = prompt.lowercased()
-        if lower.contains("no text") && lower.contains("no letters") {
+        if lower.contains("no text") {
             return prompt
         }
-        return prompt + ", no text, no letters, no typography, no watermark, no logo, no signage"
+        return prompt + ", no text in image"
     }
 }

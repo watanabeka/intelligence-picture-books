@@ -27,10 +27,14 @@ struct PageDraft: Identifiable {
     var illustrationPrompt: String
     var finalImagePrompt: String
     var mood: String
+    var camera: String = ""
+    var sceneMode: SceneMode = .solo
+    var styleClauseHint: String = ""
     var image: UIImage?
     var isImageLoading = false
     var imageState: PageImageState = .loading
     var quality: GeneratedIllustrationQuality = .unknown
+    var retryCount: Int = 0
 }
 
 @MainActor
@@ -196,6 +200,9 @@ final class CreateBookViewModel {
                 illustrationPrompt: page.illustrationPrompt,
                 finalImagePrompt: finalPrompt,
                 mood: page.mood,
+                camera: page.camera,
+                sceneMode: page.sceneMode,
+                styleClauseHint: plan.visualStyle.promptFragment,
                 imageState: .loading
             )
         }
@@ -485,9 +492,14 @@ final class CreateBookViewModel {
         Task {
             pageDrafts[index].image = nil
             pageDrafts[index].isImageLoading = true
+            pageDrafts[index].retryCount += 1
             let page = plan.pages[index]
-            let prompt = pageDrafts[index].finalImagePrompt
-            if let img = try? await illustrationGenerator.generateImage(prompt: prompt) {
+            let retryPrompt = IllustrationPromptBuilder.buildRetryPagePrompt(
+                page: page,
+                characterSheet: plan.characterSheet,
+                visualStyle: plan.visualStyle
+            )
+            if let img = try? await illustrationGenerator.generateImage(prompt: retryPrompt) {
                 pageDrafts[index].image = img
                 pageDrafts[index].imageState = .ready
             } else {

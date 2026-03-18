@@ -12,11 +12,11 @@ enum VisualStyle: String, Sendable, CaseIterable {
     var promptFragment: String {
         switch self {
         case .pastelWatercolor:
-            return "pastel watercolor illustration style, soft blended colors, gentle brush strokes, light paper texture, warm soft light"
+            return "pastel watercolor, soft color washes, gentle brushwork, warm paper texture, rounded soft shapes, light and airy"
         case .softCrayon:
-            return "soft crayon illustration style, warm textured strokes, rounded shapes, matte finish, hand-drawn feel"
+            return "soft crayon illustration, warm textured strokes, rounded shapes, matte finish, hand-drawn feel"
         case .bedtimeSoft:
-            return "soft dreamy illustration style, muted warm tones, gentle glow, cozy nighttime atmosphere, starlit"
+            return "soft dreamy illustration, muted warm tones, gentle glow, cozy nighttime atmosphere, starlit"
         }
     }
 
@@ -43,23 +43,21 @@ struct CharacterSheet: Sendable, Equatable {
 
     /// 画像プロンプトに注入するキャラクター記述（英語）
     /// "CONSISTENT CHARACTER:" ヘッダーで AI に一貫性を強調する
+    /// 画像プロンプトに注入するキャラクターの視覚的アンカー記述（英語・自然な文体）
     var promptFragment: String {
-        var traits: [String] = []
-        if !species.isEmpty { traits.append("a \(species)") }
-        if !bodyColor.isEmpty { traits.append("\(bodyColor) body") }
-
-        // 耳の詳細（size + shape を組み合わせ）
+        var parts: [String] = []
+        if !species.isEmpty && !bodyColor.isEmpty {
+            parts.append("a \(bodyColor) \(species)")
+        } else if !species.isEmpty {
+            parts.append("a \(species)")
+        }
         let earDesc = [earSize, earShape].filter { !$0.isEmpty }.joined(separator: " ")
-        if !earDesc.isEmpty { traits.append("\(earDesc) ears") }
-
-        if !faceShape.isEmpty { traits.append("\(faceShape) face") }
-        if !eyeStyle.isEmpty { traits.append("\(eyeStyle) eyes") }
-        if !tailShape.isEmpty { traits.append("\(tailShape) tail") }
-        if !accessory.isEmpty { traits.append("wearing \(accessory)") }
-        if !ageFeeling.isEmpty { traits.append("\(ageFeeling)") }
-
-        let traitStr = traits.joined(separator: ", ")
-        return "consistent main character throughout the story: \(traitStr)"
+        if !earDesc.isEmpty { parts.append("with \(earDesc) ears") }
+        if !faceShape.isEmpty { parts.append("\(faceShape) face") }
+        if !eyeStyle.isEmpty { parts.append("\(eyeStyle) eyes") }
+        if !tailShape.isEmpty { parts.append("\(tailShape) tail") }
+        if !accessory.isEmpty { parts.append("wearing \(accessory)") }
+        return parts.joined(separator: ", ")
     }
 
     /// キャラ固定のために毎回含めるべき特徴（短縮版）
@@ -89,6 +87,15 @@ struct CharacterSheet: Sendable, Equatable {
     )
 }
 
+// MARK: - SceneMode
+
+/// ページに登場するキャラクターの構成。
+/// 文字列解析による推定を廃止し、Validator が明示的に設定する。
+enum SceneMode: String, Sendable {
+    case solo  // 主人公のみ
+    case duo   // 主人公 + 友達キャラ（1人）
+}
+
 // MARK: - PagePlan
 
 /// 1ページ分の計画。LLMが生成した内容 + 検証後の補完情報を含む。
@@ -104,6 +111,7 @@ struct PagePlan: Sendable, Identifiable {
     var mood: String
     var keyObjects: [String]
     var continuityNotes: String
+    var sceneMode: SceneMode
 
     static func empty(pageNumber: Int) -> PagePlan {
         PagePlan(
@@ -116,7 +124,8 @@ struct PagePlan: Sendable, Identifiable {
             location: "",
             mood: "やさしい",
             keyObjects: [],
-            continuityNotes: ""
+            continuityNotes: "",
+            sceneMode: .solo
         )
     }
 
@@ -164,7 +173,7 @@ struct StoryPlan: Sendable {
         lines.append("  Accessory: \(characterSheet.accessory)")
         lines.append("Pages: \(pages.count)")
         for page in pages {
-            lines.append("  P\(page.pageNumber): \(page.sceneTitle)")
+            lines.append("  P\(page.pageNumber): \(page.sceneTitle) [\(page.sceneMode.rawValue)] [\(page.camera)]")
             lines.append("    Narration: \(page.narration.prefix(50))...")
             lines.append("    Scene: \(page.illustrationPrompt.prefix(50))...")
             lines.append("    Mood: \(page.mood), Objects: \(page.keyObjects.joined(separator: ", "))")

@@ -50,6 +50,12 @@ struct StoryPagePlanOutput {
 
     @Guide(description: "Key visual objects in the scene in English, comma-separated (e.g. 'flowers, butterflies, path')")
     var keyObjects: String
+
+    @Guide(description: "Camera angle for the illustration. Vary across pages for visual interest. Choose one: 'medium shot', 'wide establishing shot', 'close-up', 'three-quarter view', 'eye-level shot', 'low angle shot'")
+    var cameraAngle: String
+
+    @Guide(description: "True if the scene includes a companion/friend character alongside the main character. False if the main character is alone.")
+    var hasFriend: Bool
 }
 
 /// タイトルとキャラクターのみ生成用（フォールバック tier 3）
@@ -91,6 +97,12 @@ struct SinglePagePlanOutput {
 
     @Guide(description: "Key visual objects in English, comma-separated")
     var keyObjects: String
+
+    @Guide(description: "Camera angle for the illustration: 'medium shot', 'wide establishing shot', 'close-up', 'three-quarter view', 'eye-level shot', or 'low angle shot'")
+    var cameraAngle: String
+
+    @Guide(description: "True if a friend/companion appears in this scene alongside the main character.")
+    var hasFriend: Bool
 }
 
 // MARK: - FoundationModelsStoryGenerator
@@ -250,11 +262,12 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
                 narration: pageOutput.narration,
                 illustrationPrompt: pageOutput.sceneDescription,
                 forbiddenElements: PagePlan.defaultForbiddenElements,
-                camera: "medium shot",
+                camera: pageOutput.cameraAngle.isEmpty ? "medium shot" : pageOutput.cameraAngle,
                 location: "",
                 mood: pageOutput.mood,
                 keyObjects: pageOutput.keyObjects.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) },
-                continuityNotes: previousContext.isEmpty ? "" : "continues from previous scene"
+                continuityNotes: previousContext.isEmpty ? "" : "continues from previous scene",
+                sceneMode: pageOutput.hasFriend ? .duo : .solo
             )
             pages.append(pagePlan)
 
@@ -302,11 +315,12 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
                 narration: pageOutput.narration,
                 illustrationPrompt: pageOutput.sceneDescription,
                 forbiddenElements: PagePlan.defaultForbiddenElements,
-                camera: "medium shot",
+                camera: pageOutput.cameraAngle.isEmpty ? "medium shot" : pageOutput.cameraAngle,
                 location: "",
                 mood: pageOutput.mood,
                 keyObjects: pageOutput.keyObjects.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) },
-                continuityNotes: ""
+                continuityNotes: "",
+                sceneMode: pageOutput.hasFriend ? .duo : .solo
             )
         }
 
@@ -345,6 +359,8 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
             - Scene descriptions must be SPECIFIC and CONCRETE for illustration
             - Bad example: "a happy scene" (too vague)
             - Good example: "a small white rabbit picking red flowers in a sunny meadow with butterflies around"
+            - Vary cameraAngle across pages for visual interest (do not use 'medium shot' for every page)
+            - Set hasFriend to true only when a companion character visibly appears alongside the main character
 
             \(styleGuide.asPromptInstructions)
             """

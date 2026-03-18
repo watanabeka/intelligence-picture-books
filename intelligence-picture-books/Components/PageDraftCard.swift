@@ -75,22 +75,32 @@ struct PageDraftCard: View {
 
     #if DEBUG
     private var draftDebugInfo: some View {
-        let promptHash = abs(draft.finalImagePrompt.hashValue) % 100000
+        let promptLen = draft.finalImagePrompt.count
         return VStack(alignment: .leading, spacing: 6) {
             Text("Debug — P.\(draft.pageNumber)").font(.caption.bold()).foregroundStyle(.orange)
-            draftDebugRow("Prompt Hash", "#\(promptHash)")
-            if let cs = characterSheet {
-                draftDebugRow("Character Species", cs.species.isEmpty ? "(empty)" : cs.species)
-                draftDebugRow("Character BodyColor", cs.bodyColor.isEmpty ? "(empty)" : cs.bodyColor)
-                draftDebugRow("Character Accessory", cs.accessory.isEmpty ? "(empty)" : cs.accessory)
-            }
-            draftDebugRow("Aspect Ratio Applied", "16:9 (\(String(format: "%.4f", ImageAspect.page)))")
-            draftDebugRow("Image State", "\(draft.imageState)")
+
+            // Scene meta
+            draftDebugRow("Camera", draft.camera.isEmpty ? "(none)" : draft.camera)
+            draftDebugRow("Scene Mode", draft.sceneMode.rawValue)
             draftDebugRow("Mood", "\(draft.mood) → \(IllustrationPromptTranslator.moodToEnglish(draft.mood))")
-            if !draft.finalImagePrompt.isEmpty {
-                let preview = String(draft.finalImagePrompt.prefix(200))
-                draftDebugRow("Prompt (EN)", preview + (draft.finalImagePrompt.count > 200 ? "…" : ""))
+
+            // Character
+            if let cs = characterSheet {
+                draftDebugRow("Character", "\(cs.species) / \(cs.bodyColor) / \(cs.accessory)")
             }
+
+            // Prompt
+            draftDebugRow("Prompt Length", "\(promptLen) chars")
+            draftDebugRow("Style Clause", draft.styleClauseHint.isEmpty ? "(none)" : draft.styleClauseHint)
+            if !draft.finalImagePrompt.isEmpty {
+                let preview = String(draft.finalImagePrompt.prefix(220))
+                draftDebugRow("Prompt (EN)", preview + (promptLen > 220 ? "…" : ""))
+            }
+
+            // Generation state
+            draftDebugRow("Image State", "\(draft.imageState)")
+            draftDebugRow("Retry Count", "\(draft.retryCount)")
+            draftDebugRow("Aspect Ratio", "16:9 (\(String(format: "%.4f", ImageAspect.page)))")
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)

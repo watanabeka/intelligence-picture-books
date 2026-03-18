@@ -71,6 +71,12 @@ enum StoryPlanValidator {
         // ページ間の一貫性チェック
         corrected = enforcePageContinuity(corrected)
 
+        // SceneMode の推定（LLM が設定しなかった場合に narration から補完）
+        corrected = inferSceneModes(corrected)
+
+        // カメラアングルの重複排除
+        corrected = assignDistinctCameras(corrected)
+
         // 表紙プランの検証
         corrected = validateCoverPlan(corrected)
 
@@ -286,6 +292,64 @@ enum StoryPlanValidator {
                     notes.append("objects from previous scene: \(prev.keyObjects.prefix(3).joined(separator: ", "))")
                 }
                 corrected.pages[i].continuityNotes = notes.joined(separator: "; ")
+            }
+        }
+        return corrected
+    }
+
+    // MARK: - SceneMode Inference
+
+    /// 既に `.duo` が設定されているページは維持し、`.solo` のページのみ narration から推定する。
+    private static func inferSceneModes(_ plan: StoryPlan) -> StoryPlan {
+        var corrected = plan
+        let duoKeywords = [
+            "いっしょ", "ふたり", "ともだち", "あった", "であった", "やってきた",
+            "friend", "together", "meet", "companion", "with a ", "and a ",
+            "greet", "introduce", "side by side"
+        ]
+        for i in corrected.pages.indices {
+            guard corrected.pages[i].sceneMode == .solo else { continue }
+            let text = (corrected.pages[i].narration + " " + corrected.pages[i].illustrationPrompt).lowercased()
+            if duoKeywords.contains(where: { text.contains($0) }) {
+                corrected.pages[i].sceneMode = .duo
+                print("ℹ️ [Validator] P\(corrected.pages[i].pageNumber): sceneMode → duo (inferred)")
+            }
+        }
+        return corrected
+    }
+
+    // MARK: - Camera Deduplication
+
+    /// ページごとに異なるカメラアングルを割り当てる。
+    /// 連続するページに同じカメラが設定されていた場合、プールから別のアングルを選択する。
+    private static let cameraPool: [String] = [
+        "medium shot",
+        "wide establishing shot",
+        "close-up",
+        "three-quarter view",
+        "eye-level shot",
+        "low angle shot",
+        "overhead view",
+    ]
+
+    private static func assignDistinctCameras(_ plan: StoryPlan) -> StoryPlan {
+        var corrected = plan
+        var recentCameras: [String] = []
+
+        for i in corrected.pages.indices {
+            let current = corrected.pages[i].camera.trimmingCharacters(in: .whitespaces)
+            let isRepeat = recentCameras.last == current
+            let isEmpty = current.isEmpty
+
+            if isEmpty || isRepeat {
+                let recent = Set(recentCameras.suffix(2))
+                let available = cameraPool.filter { !recent.contains($0) }
+                let replacement = available.first ?? cameraPool[i % cameraPool.count]
+                corrected.pages[i].camera = replacement
+                recentCameras.append(replacement)
+                print("ℹ️ [Validator] P\(corrected.pages[i].pageNumber): camera \(isEmpty ? "assigned" : "deduplicated") → '\(replacement)'")
+            } else {
+                recentCameras.append(current)
             }
         }
         return corrected
