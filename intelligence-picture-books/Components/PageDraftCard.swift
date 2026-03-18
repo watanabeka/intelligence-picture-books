@@ -84,7 +84,7 @@ struct PageDraftCard: View {
                 draftDebugRow("Character BodyColor", cs.bodyColor.isEmpty ? "(empty)" : cs.bodyColor)
                 draftDebugRow("Character Accessory", cs.accessory.isEmpty ? "(empty)" : cs.accessory)
             }
-            draftDebugRow("Aspect Ratio Applied", "16:9 (\(ImageAspect.page.formatted(.number.precision(.fractionLength(4)))))")
+            draftDebugRow("Aspect Ratio Applied", "16:9 (\(String(format: "%.4f", ImageAspect.page)))")
             draftDebugRow("Image State", "\(draft.imageState)")
             draftDebugRow("Mood", "\(draft.mood) → \(IllustrationPromptTranslator.moodToEnglish(draft.mood))")
             if !draft.finalImagePrompt.isEmpty {

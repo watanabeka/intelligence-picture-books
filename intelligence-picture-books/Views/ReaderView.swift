@@ -331,7 +331,7 @@ struct ReaderView: View {
             debugRow("Character Accessory", character.accessory.isEmpty ? "(empty)" : character.accessory)
 
             // アスペクト比
-            debugRow("Aspect Ratio Applied", "16:9 (\(ImageAspect.page.formatted(.number.precision(.fractionLength(4)))))")
+            debugRow("Aspect Ratio Applied", "16:9 (\(String(format: "%.4f", ImageAspect.page)))")
 
             // 利用可否
             debugRow("ImageCreator Available", "\(viewModel.isImageCreatorAvailable)")

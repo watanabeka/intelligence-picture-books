@@ -138,9 +138,9 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
                 print("  → 原因: デバイスのシステム言語が非対応（プロンプト言語は無関係）")
                 print("  → 確認: Settings > General > Language が日本語になっていませんか？")
                 return .permanent
-            @unknown default:
+            default:
                 // 未知の ImageCreator.Error ケースは内容を記録して transient 扱い
-                print("  → 型: ImageCreator.Error (未知のケース: \(ice)) — transient として扱う")
+                print("  → 型: ImageCreator.Error (ケース: \(ice)) — transient として扱う")
                 return .transient
             }
         }
@@ -177,8 +177,8 @@ final class ImageCreatorIllustrationGenerator: IllustrationGenerating, @unchecke
             case .unsupportedLanguage:
                 print("  → ImageCreator.Error.unsupportedLanguage (init 時に検出)")
                 return .unsupportedLanguage
-            @unknown default:
-                print("  → ImageCreator.Error (未知のケース: \(ice))")
+            default:
+                print("  → ImageCreator.Error (ケース: \(ice))")
                 return .unknown(String(describing: ice))
             }
         }
