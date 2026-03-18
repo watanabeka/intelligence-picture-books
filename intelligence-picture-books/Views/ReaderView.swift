@@ -248,8 +248,10 @@ struct ReaderView: View {
             let retryPrompt = viewModel.pageRetryPrompts[page.pageNumber]
             lines.append("--- Page \(page.pageNumber) ---")
             lines.append("State: \(state), Fallback: \(page.isFallback), Retry: \(retry)")
+            let sr = IllustrationPromptTranslator.sanitizeJapaneseVerbose(page.illustrationPrompt)
             lines.append("Mood: \(page.mood) → \(IllustrationPromptTranslator.moodToEnglish(page.mood))")
-            lines.append("Scene Has Japanese: \(IllustrationPromptTranslator.hasJapanese(page.illustrationPrompt))")
+            lines.append("Scene Quality: \(sr.quality.description), Removed Tokens: \(sr.removedTokenCount)")
+            lines.append("Prompt Length: \(page.finalImagePrompt.count) chars")
             if !page.illustrationPrompt.isEmpty {
                 lines.append("① Scene (LLM raw): \(page.illustrationPrompt)")
             }
@@ -308,7 +310,10 @@ struct ReaderView: View {
         let retryCount = viewModel.pageRetryCounts[page.pageNumber] ?? 0
         let retryPrompt = viewModel.pageRetryPrompts[page.pageNumber]
         let state = viewModel.pageImageStates[page.pageNumber]
-        let sceneHasJapanese = IllustrationPromptTranslator.hasJapanese(page.illustrationPrompt)
+
+        // プロンプト品質情報（デバッグ計算）
+        let sanitizeResult = IllustrationPromptTranslator.sanitizeJapaneseVerbose(page.illustrationPrompt)
+        let promptLength = page.finalImagePrompt.count
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("Debug Info — Page \(page.pageNumber)").font(.caption.bold()).foregroundStyle(.orange)
@@ -329,9 +334,11 @@ struct ReaderView: View {
                 debugRow("Last Error", err)
             }
 
-            // 言語状態
+            // プロンプト品質
             debugRow("Mood", "\(page.mood) → \(IllustrationPromptTranslator.moodToEnglish(page.mood))")
-            debugRow("Scene Has Japanese", sceneHasJapanese ? "⚠️ YES (sanitized on build)" : "✓ No")
+            debugRow("Scene Quality", sanitizeResult.quality.description)
+            debugRow("Removed Tokens", "\(sanitizeResult.removedTokenCount)")
+            debugRow("Prompt Length", "\(promptLength) chars")
 
             // プロンプト比較（元シーン vs 構築済み英語プロンプト）
             if !page.illustrationPrompt.isEmpty {
@@ -340,7 +347,6 @@ struct ReaderView: View {
             if let rp = retryPrompt {
                 debugRow("② Retry Prompt (EN)", rp)
             } else if !page.finalImagePrompt.isEmpty {
-                // finalImagePrompt は長いので先頭 300 文字のみ表示
                 let preview = String(page.finalImagePrompt.prefix(300))
                 debugRow("② Image Prompt (EN)", preview + (page.finalImagePrompt.count > 300 ? "…" : ""))
             }

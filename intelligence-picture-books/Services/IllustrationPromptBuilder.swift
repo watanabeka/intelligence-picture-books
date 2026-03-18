@@ -14,7 +14,6 @@ enum IllustrationPromptBuilder {
         "no book title text, no cover text, no typography, pure illustration only"
 
     /// 絵本スタイルの固定フレーズ
-    /// "front cover" や "book cover" は意図的に除外（タイトル文字の描画を誘発するため）
     private static let pictureBookClause =
         "children's picture book interior page illustration, storybook art, " +
         "gentle and safe for young children, simple shapes, soft outlines, " +
@@ -23,6 +22,14 @@ enum IllustrationPromptBuilder {
     /// 画像メディアの固定フレーズ（写真感・リアル感を排除）
     private static let illustrationMediumClause =
         "digital children's book illustration, flat art, soft lighting, no photorealism"
+
+    /// キャラクター一貫性フレーズ（全ページ・全生成に必須）。
+    /// キャラクターのズレ・追加キャラ混入を抑制する。
+    private static let characterConsistencyClause =
+        "same exact main character with identical appearance throughout the entire book, " +
+        "same face shape and body proportions, same color — no character variation allowed, " +
+        "only ONE character in the scene — absolutely no extra characters, " +
+        "no additional animals, no people in background"
 
     // MARK: - Page Prompt
 
@@ -36,7 +43,7 @@ enum IllustrationPromptBuilder {
     ) -> String {
         var segments: [String] = []
 
-        // 1. 文字禁止を最初に強調（先頭に置くほど重みが増す）
+        // 1. 文字禁止を最初に強調
         segments.append(textFreeClause)
 
         // 2. 絵本スタイル・媒体の固定
@@ -44,13 +51,12 @@ enum IllustrationPromptBuilder {
         segments.append(illustrationMediumClause)
         segments.append(visualStyle.promptFragment)
 
-        // 3. キャラクター記述（毎回全情報を注入、ヘッダーで強調）
+        // 3. キャラクター記述 + 一貫性強制（全ページ必須）
         segments.append(characterSheet.promptFragment)
+        segments.append(characterConsistencyClause)
 
-        // 4. シーン記述（危険要素を除去 + 日本語混入があれば除去してから追加）
-        let safeScene = IllustrationPromptTranslator.sanitizeJapanese(
-            sanitizeForIllustration(page.illustrationPrompt)
-        )
+        // 4. シーン記述（日本語除去 + 品質チェック + 意味補充）
+        let safeScene = buildSafeScene(page.illustrationPrompt, fallbackSetting: "in a cheerful natural setting")
         if !safeScene.isEmpty {
             segments.append("scene: \(safeScene)")
         }
@@ -60,7 +66,7 @@ enum IllustrationPromptBuilder {
             segments.append("camera: \(page.camera)")
         }
 
-        // 6. 場所（日本語が混入していれば除去）
+        // 6. 場所（日本語除去）
         if !page.location.isEmpty {
             let safeLocation = IllustrationPromptTranslator.sanitizeJapanese(
                 sanitizeForIllustration(page.location)
@@ -68,7 +74,7 @@ enum IllustrationPromptBuilder {
             if !safeLocation.isEmpty { segments.append("setting: \(safeLocation)") }
         }
 
-        // 7. ムード（IllustrationPromptTranslator の包括的な変換テーブルを使用）
+        // 7. ムード（包括的な変換テーブルを使用）
         if !page.mood.isEmpty {
             segments.append("\(IllustrationPromptTranslator.moodToEnglish(page.mood)) atmosphere")
         }
@@ -81,7 +87,7 @@ enum IllustrationPromptBuilder {
             }
         }
 
-        // 9. 連続性ノート（ページ番号は含めない）
+        // 9. 連続性ノート
         if !page.continuityNotes.isEmpty {
             segments.append("visual continuity: \(page.continuityNotes)")
         }
@@ -95,8 +101,7 @@ enum IllustrationPromptBuilder {
     // MARK: - Cover Prompt
 
     /// 表紙用の画像プロンプトを構築する。
-    /// "book cover" や "front cover" というフレーズを意図的に使わない（タイトル文字生成を防ぐため）。
-    /// タイトル文字は画像に入れず、UIレイヤーで重ねる。
+    /// "book cover" や "front cover" は意図的に使わない（タイトル文字生成を防ぐため）。
     static func buildCoverPrompt(
         coverPlan: CoverPlan,
         characterSheet: CharacterSheet,
@@ -107,8 +112,7 @@ enum IllustrationPromptBuilder {
         // 1. 文字禁止を先頭に
         segments.append(textFreeClause)
 
-        // 2. 「キャラクターが主役の美しいシーン」として指示
-        //    "book cover" は文字描画を強く誘発するため使用しない
+        // 2. キャラクターが主役の美しいシーンとして指示
         segments.append(
             "magical storybook character portrait scene, " +
             "hero character in a beautiful setting, " +
@@ -120,10 +124,11 @@ enum IllustrationPromptBuilder {
         segments.append(illustrationMediumClause)
         segments.append(visualStyle.promptFragment)
 
-        // 4. キャラクター（完全記述）
+        // 4. キャラクター（完全記述）+ 一貫性強制
         segments.append(characterSheet.promptFragment)
+        segments.append(characterConsistencyClause)
 
-        // 5. ワールド・カバープロンプト（日本語テーマ混入を除去してから追加）
+        // 5. ワールド・カバープロンプト（日本語テーマ混入を除去）
         let safeCoverPrompt = IllustrationPromptTranslator.sanitizeJapanese(
             sanitizeForIllustration(coverPlan.coverPrompt)
         )
@@ -150,12 +155,33 @@ enum IllustrationPromptBuilder {
 
     // MARK: - Retry Prompt (stronger constraints)
 
-    /// リトライ時に適用する追加制約。文字・他キャラ混入・スタイル崩れを強力に抑制する。
-    private static let retryEnforcementClause =
-        "exact same main character as every other page of this book, " +
-        "strictly consistent character appearance throughout, " +
-        "only ONE character in the scene — no extra characters, no people in background, " +
-        "same illustration style and color palette as the rest of the book"
+    /// リトライ時に適用するキャラクター固定フレーズ。
+    /// キャラクターの種族・体色・アクセサリーを明示的に注入して AI の揺らぎを防ぐ。
+    private static func retryEnforcementClause(for character: CharacterSheet) -> String {
+        // キャラクターの具体的な外見を直接引用してロックする
+        var lock = "STRICT CHARACTER LOCK"
+        if !character.species.isEmpty && !character.bodyColor.isEmpty {
+            lock += ": the \(character.bodyColor) \(character.species) must look IDENTICAL to all other pages"
+        } else if !character.species.isEmpty {
+            lock += ": the \(character.species) must look IDENTICAL to all other pages"
+        }
+
+        var parts = [
+            lock,
+            "same exact face shape, same exact body proportions, same exact \(!character.bodyColor.isEmpty ? "\(character.bodyColor) color" : "color scheme")",
+        ]
+        if !character.accessory.isEmpty {
+            parts.append("must be wearing \(character.accessory) — same as every other page")
+        }
+        parts += [
+            "ABSOLUTE RULE: only ONE character in the entire image",
+            "zero extra animals anywhere in the scene",
+            "zero additional people or creatures in background",
+            "same flat soft-outline illustration style",
+            "same pastel color palette as the rest of the book",
+        ]
+        return parts.joined(separator: ", ")
+    }
 
     /// ページ画像のリトライ用プロンプトを構築する。通常生成より制約を強化してある。
     static func buildRetryPagePrompt(
@@ -166,22 +192,21 @@ enum IllustrationPromptBuilder {
     ) -> String {
         var segments: [String] = []
 
-        // 1. 文字禁止 + リトライ制約を先頭に二重配置
+        // 1. 文字禁止 + キャラクターロックを先頭に二重配置
         segments.append(textFreeClause)
-        segments.append(retryEnforcementClause)
+        segments.append(retryEnforcementClause(for: characterSheet))
 
         // 2. 絵本スタイル
         segments.append(pictureBookClause)
         segments.append(illustrationMediumClause)
         segments.append(visualStyle.promptFragment)
 
-        // 3. キャラクター（フル記述）
+        // 3. キャラクター（フル記述）+ 一貫性強制
         segments.append(characterSheet.promptFragment)
+        segments.append(characterConsistencyClause)
 
-        // 4. シーン（日本語除去）
-        let safeScene = IllustrationPromptTranslator.sanitizeJapanese(
-            sanitizeForIllustration(page.illustrationPrompt)
-        )
+        // 4. シーン（品質保証付き日本語除去）
+        let safeScene = buildSafeScene(page.illustrationPrompt, fallbackSetting: "in a gentle peaceful setting")
         if !safeScene.isEmpty { segments.append("scene: \(safeScene)") }
 
         // 5. カメラ・ムード
@@ -196,8 +221,9 @@ enum IllustrationPromptBuilder {
             if !safe.isEmpty { segments.append("featuring: \(safe.joined(separator: ", "))") }
         }
 
-        // 7. 末尾にも二重強調（リトライなのでさらに重みを増やす）
-        segments.append(retryEnforcementClause)
+        // 7. 末尾に強制フレーズを再配置（リトライなので三重強調）
+        segments.append(characterConsistencyClause)
+        segments.append(retryEnforcementClause(for: characterSheet))
         segments.append(textFreeClause)
 
         return segments.joined(separator: ", ")
@@ -212,7 +238,7 @@ enum IllustrationPromptBuilder {
         var segments: [String] = []
 
         segments.append(textFreeClause)
-        segments.append(retryEnforcementClause)
+        segments.append(retryEnforcementClause(for: characterSheet))
 
         segments.append(
             "magical storybook character portrait scene, " +
@@ -223,6 +249,7 @@ enum IllustrationPromptBuilder {
         segments.append(illustrationMediumClause)
         segments.append(visualStyle.promptFragment)
         segments.append(characterSheet.promptFragment)
+        segments.append(characterConsistencyClause)
 
         let safeCover = IllustrationPromptTranslator.sanitizeJapanese(
             sanitizeForIllustration(coverPlan.coverPrompt)
@@ -231,7 +258,8 @@ enum IllustrationPromptBuilder {
 
         segments.append("centered character, full body or three-quarters view, beautiful background")
 
-        segments.append(retryEnforcementClause)
+        segments.append(characterConsistencyClause)
+        segments.append(retryEnforcementClause(for: characterSheet))
         segments.append(textFreeClause)
 
         return segments.joined(separator: ", ")
@@ -246,12 +274,12 @@ enum IllustrationPromptBuilder {
         if !page.keyObjects.isEmpty {
             parts.append(contentsOf: page.keyObjects.prefix(3).filter { !isTextTrigger($0) })
         }
-        parts.append(page.mood)
+        parts.append(IllustrationPromptTranslator.moodToEnglish(page.mood))
         return parts.joined(separator: " ")
     }
 
     static func buildFallbackCoverPrompt(characterSheet: CharacterSheet, theme: String) -> String {
-        return "\(characterSheet.species) \(characterSheet.bodyColor) \(theme)"
+        return "\(characterSheet.species) \(characterSheet.bodyColor) \(IllustrationPromptTranslator.translateTheme(theme))"
     }
 
     // MARK: - Sanitize
@@ -271,11 +299,29 @@ enum IllustrationPromptBuilder {
         for pattern in dangerousPatterns {
             result = result.replacingOccurrences(of: pattern, with: "", options: .caseInsensitive)
         }
-        // 複数スペースを1つに
         while result.contains("  ") {
             result = result.replacingOccurrences(of: "  ", with: " ")
         }
         return result.trimmingCharacters(in: .whitespaces)
+    }
+
+    // MARK: - Private Helpers
+
+    /// シーン記述を日本語除去 + 品質チェックして返す。
+    /// sanitize 後に意味が薄すぎる場合は `fallbackSetting` を補充する。
+    private static func buildSafeScene(_ raw: String, fallbackSetting: String) -> String {
+        let sanitized = IllustrationPromptTranslator.sanitizeJapanese(sanitizeForIllustration(raw))
+        switch IllustrationPromptTranslator.assessQuality(sanitized) {
+        case .good:
+            return sanitized
+        case .tooShort:
+            let enriched = "\(sanitized) \(fallbackSetting)"
+            print("ℹ️ [Builder] Scene too short after sanitize → enriched: \"\(enriched)\"")
+            return enriched
+        case .empty:
+            print("ℹ️ [Builder] Scene empty after sanitize → using fallback setting")
+            return fallbackSetting
+        }
     }
 
     /// テキスト生成を誘発しやすいキーワードか判定
@@ -284,5 +330,4 @@ enum IllustrationPromptBuilder {
         let triggers = ["sign", "poster", "billboard", "label", "text", "book", "page", "title"]
         return triggers.contains(where: { lower.contains($0) })
     }
-
 }
