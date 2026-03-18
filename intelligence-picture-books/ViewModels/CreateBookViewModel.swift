@@ -188,8 +188,7 @@ final class CreateBookViewModel {
             let finalPrompt = IllustrationPromptBuilder.buildPagePrompt(
                 page: page,
                 characterSheet: plan.characterSheet,
-                visualStyle: plan.visualStyle,
-                storyTitle: plan.title
+                visualStyle: plan.visualStyle
             )
             return PageDraft(
                 pageNumber: page.pageNumber,

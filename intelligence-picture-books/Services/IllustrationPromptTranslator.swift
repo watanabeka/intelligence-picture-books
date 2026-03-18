@@ -16,12 +16,6 @@ enum IllustrationPromptTranslator {
         case tooShort(wordCount: Int)   // 英語が残っているが短すぎる (< 4 words)
         case empty                      // 英語が一切残らなかった
 
-        /// 追加補充なしで使えるか
-        var isSufficient: Bool {
-            if case .good = self { return true }
-            return false
-        }
-
         /// デバッグ表示用の文字列
         var description: String {
             switch self {
@@ -41,6 +35,12 @@ enum IllustrationPromptTranslator {
         let removedTokenCount: Int
         let quality: PromptQuality
     }
+
+    // MARK: - 定数
+
+    /// 日本語トークン区切り文字セット（毎回生成しないよう static 保持）
+    private static let separatorSet: CharacterSet =
+        .whitespaces.union(.init(charactersIn: "、。・「」『』【】〔〕（）"))
 
     // MARK: - 日本語検出
 
@@ -108,26 +108,25 @@ enum IllustrationPromptTranslator {
     /// 除去トークン数・品質評価を含む詳細結果を返す。
     static func sanitizeJapaneseVerbose(_ text: String) -> SanitizeResult {
         guard hasJapanese(text) else {
-            let words = text.split(separator: " ").filter { !$0.isEmpty }
-            return SanitizeResult(
-                text: text,
-                removedTokenCount: 0,
-                quality: quality(for: words.count)
-            )
+            let wordCount = text.split(separator: " ").filter { !$0.isEmpty }.count
+            return SanitizeResult(text: text, removedTokenCount: 0, quality: quality(for: wordCount))
         }
-        let separators = CharacterSet.whitespaces.union(.init(charactersIn: "、。・「」『』【】〔〕（）"))
-        let allTokens = text.components(separatedBy: separators).filter { !$0.isEmpty }
-        let japaneseTokens = allTokens.filter { hasJapanese($0) }
-        let englishTokens = allTokens.filter { !hasJapanese($0) }
-        let result = englishTokens.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        // 一度だけ分割し、1パスで English / Japanese に振り分ける
+        let allTokens = text.components(separatedBy: separatorSet).filter { !$0.isEmpty }
+        var englishTokens: [String] = []
+        var removedCount = 0
+        for token in allTokens {
+            if hasJapanese(token) {
+                removedCount += 1
+            } else {
+                englishTokens.append(token)
+            }
+        }
+        let result = englishTokens.joined(separator: " ")
         if result.isEmpty {
             print("⚠️ [Translator] 日本語テキストを英語に変換できませんでした: \(text.prefix(50))")
         }
-        return SanitizeResult(
-            text: result,
-            removedTokenCount: japaneseTokens.count,
-            quality: quality(for: englishTokens.count)
-        )
+        return SanitizeResult(text: result, removedTokenCount: removedCount, quality: quality(for: englishTokens.count))
     }
 
     /// テキスト中の日本語トークンを除去し、英語部分のみを返す（簡易版）。

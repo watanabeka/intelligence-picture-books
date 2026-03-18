@@ -110,8 +110,7 @@ final class ReaderViewModel {
         let retryPrompt = IllustrationPromptBuilder.buildRetryPagePrompt(
             page: pagePlan,
             characterSheet: book.characterSheet,
-            visualStyle: book.visualStyle,
-            storyTitle: book.title
+            visualStyle: book.visualStyle
         )
         pageRetryPrompts[pageNum] = retryPrompt
         debugLog("Page \(pageNum): retry #\(pageRetryCounts[pageNum]!) with strengthened prompt")
