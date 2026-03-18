@@ -55,9 +55,19 @@ enum IllustrationPromptBuilder {
         let earDesc = [sheet.earSize, sheet.earShape].filter { !$0.isEmpty }.joined(separator: " ")
         if !earDesc.isEmpty { parts.append("with \(earDesc) ears") }
 
-        // 顔・目
-        if !sheet.faceShape.isEmpty { parts.append("\(sheet.faceShape) face") }
-        if !sheet.eyeStyle.isEmpty  { parts.append("\(sheet.eyeStyle) eyes") }
+        // 顔印象（faceImpression を優先、なければ faceShape + eyeStyle を個別に使用）
+        if !sheet.faceImpression.isEmpty {
+            parts.append(sheet.faceImpression)
+        } else {
+            if !sheet.faceShape.isEmpty { parts.append("\(sheet.faceShape) face") }
+            if !sheet.eyeStyle.isEmpty  { parts.append("\(sheet.eyeStyle) eyes") }
+        }
+
+        // 胸毛（視覚的差別化アンカー）
+        if !sheet.chestFur.isEmpty { parts.append(sheet.chestFur) }
+
+        // 尻尾
+        if !sheet.tailShape.isEmpty { parts.append("\(sheet.tailShape) tail") }
 
         // アクセサリー（強いビジュアルアンカー）
         if !sheet.accessory.isEmpty { parts.append("wearing \(sheet.accessory)") }
@@ -76,15 +86,32 @@ enum IllustrationPromptBuilder {
         if !sheet.accessory.isEmpty { parts.append("wearing \(sheet.accessory) as in all other pages") }
         let earDesc = [sheet.earSize, sheet.earShape].filter { !$0.isEmpty }.joined(separator: " ")
         if !earDesc.isEmpty { parts.append("\(earDesc) ears") }
+        if !sheet.faceImpression.isEmpty { parts.append(sheet.faceImpression) }
+        if !sheet.chestFur.isEmpty { parts.append(sheet.chestFur) }
         return parts.joined(separator: ", ")
     }
 
     /// SceneMode に応じたキャラクター人数フレーズ（自然な表現）
+    /// duoの場合は secondaryCharacterHint を使って友達を具体的に描写する
     private static func sceneModeClause(for page: PagePlan) -> String {
         switch page.sceneMode {
-        case .solo: return "the character is alone in the scene"
-        case .duo:  return "the character is with one friend in the scene"
+        case .solo:
+            return "the character is alone in the scene"
+        case .duo:
+            if !page.secondaryCharacterHint.isEmpty {
+                return "alongside a friend who is \(page.secondaryCharacterHint)"
+            }
+            return "the character is with one friend in the scene"
         }
+    }
+
+    /// カメラアングルから構図スケールヒントを導出する
+    private static func compositionScaleHint(for camera: String) -> String {
+        let lower = camera.lowercased()
+        if lower.contains("wide") || lower.contains("overhead") || lower.contains("establishing") {
+            return "appears small in the frame"
+        }
+        return "fills most of the frame"
     }
 
     // MARK: - Page Prompt
@@ -108,14 +135,17 @@ enum IllustrationPromptBuilder {
             let safe = page.keyObjects.filter { !isTextTrigger($0) }
             if !safe.isEmpty { segments.append("featuring: \(safe.joined(separator: ", "))") }
         }
-        if !page.camera.isEmpty { segments.append(page.camera) }
+        if !page.camera.isEmpty {
+            segments.append(page.camera)
+            segments.append(compositionScaleHint(for: page.camera))
+        }
         if !page.location.isEmpty {
             let safeLoc = IllustrationPromptTranslator.sanitizeJapanese(sanitizeForIllustration(page.location))
             if !safeLoc.isEmpty { segments.append("setting: \(safeLoc)") }
         }
 
-        // Layer ②: Character
-        segments.append(buildCharacterAnchor(characterSheet))
+        // Layer ②: Character（"the main character:" で主役を明示）
+        segments.append("the main character: \(buildCharacterAnchor(characterSheet))")
         segments.append(sceneModeClause(for: page))
 
         // Layer ③: Style
@@ -177,10 +207,13 @@ enum IllustrationPromptBuilder {
             let safe = page.keyObjects.filter { !isTextTrigger($0) }
             if !safe.isEmpty { segments.append("featuring: \(safe.joined(separator: ", "))") }
         }
-        if !page.camera.isEmpty { segments.append(page.camera) }
+        if !page.camera.isEmpty {
+            segments.append(page.camera)
+            segments.append(compositionScaleHint(for: page.camera))
+        }
 
         // Layer ②: Character（外見を2回繰り返して差分強調 — 命令口調は使わない）
-        segments.append(buildCharacterAnchor(characterSheet))
+        segments.append("the main character: \(buildCharacterAnchor(characterSheet))")
         segments.append(sceneModeClause(for: page))
         segments.append(buildRetryCharacterAnchor(characterSheet))
 

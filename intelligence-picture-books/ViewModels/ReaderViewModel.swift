@@ -106,7 +106,8 @@ final class ReaderViewModel {
             mood: page.mood,
             keyObjects: [],
             continuityNotes: "",
-            sceneMode: .solo
+            sceneMode: .solo,
+            secondaryCharacterHint: ""
         )
         let retryPrompt = IllustrationPromptBuilder.buildRetryPagePrompt(
             page: pagePlan,

@@ -88,7 +88,8 @@ final class MockStoryGenerator: StoryGenerating, @unchecked Sendable {
                 mood: t.mood,
                 keyObjects: t.objects,
                 continuityNotes: i > 0 ? "continues from previous scene" : "",
-                sceneMode: .solo
+                sceneMode: .solo,
+                secondaryCharacterHint: ""
             )
             pages.append(page)
 

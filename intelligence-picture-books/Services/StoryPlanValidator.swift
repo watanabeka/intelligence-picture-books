@@ -74,6 +74,9 @@ enum StoryPlanValidator {
         // SceneMode の推定（LLM が設定しなかった場合に narration から補完）
         corrected = inferSceneModes(corrected)
 
+        // duoページの secondaryCharacterHint を補完
+        corrected = enforceSecondaryCharacterHints(corrected)
+
         // カメラアングルの重複排除
         corrected = assignDistinctCameras(corrected)
 
@@ -215,6 +218,30 @@ enum StoryPlanValidator {
             fixed.accessory = "a small blue scarf"
         }
 
+        if fixed.faceImpression.isEmpty {
+            // eyeStyle と faceShape から複合フレーズを生成
+            let face = fixed.faceShape.isEmpty ? "round" : fixed.faceShape
+            let eye  = fixed.eyeStyle.isEmpty  ? "large round" : fixed.eyeStyle
+            fixed.faceImpression = "\(face) face with \(eye) eyes"
+        }
+
+        if fixed.chestFur.isEmpty {
+            // 動物種に応じた胸毛の記述
+            let chestMap: [String: String] = [
+                "rabbit":   "soft fluffy white chest fur",
+                "cat":      "pale chest fur",
+                "dog":      "soft chest fur",
+                "bear":     "light-colored chest fur",
+                "reindeer": "cream-colored chest patch",
+                "fox":      "cream chest fur",
+                "horse":    "smooth chest fur",
+                "elephant": "pale gray chest",
+                "bird":     "lighter chest feathers",
+                "penguin":  "white chest feathers",
+            ]
+            fixed.chestFur = chestMap[fixed.species] ?? "soft chest fur"
+        }
+
         if fixed.ageFeeling.isEmpty {
             fixed.ageFeeling = "young and cute"
         }
@@ -316,6 +343,48 @@ enum StoryPlanValidator {
             }
         }
         return corrected
+    }
+
+    // MARK: - Secondary Character Enforcement
+
+    /// duoページに secondaryCharacterHint がない場合、主役と明確に異なるキャラを補完する。
+    private static func enforceSecondaryCharacterHints(_ plan: StoryPlan) -> StoryPlan {
+        var corrected = plan
+        let mainSpecies = plan.characterSheet.species
+        let mainColor   = plan.characterSheet.bodyColor
+
+        for i in corrected.pages.indices {
+            guard corrected.pages[i].sceneMode == .duo else { continue }
+            guard corrected.pages[i].secondaryCharacterHint.isEmpty else { continue }
+
+            let hint = makeSecondaryCharacterHint(avoidSpecies: mainSpecies, avoidColor: mainColor)
+            corrected.pages[i].secondaryCharacterHint = hint
+            print("ℹ️ [Validator] P\(corrected.pages[i].pageNumber): secondaryCharacterHint → '\(hint)'")
+        }
+        return corrected
+    }
+
+    /// 主役と異なる種・色・服装を持つ友達キャラの説明を生成する
+    private static func makeSecondaryCharacterHint(avoidSpecies: String, avoidColor: String) -> String {
+        // 主役と異なる動物を選ぶ
+        let alternativeSpecies: [(species: String, color: String, accessory: String)] = [
+            ("bear",     "light brown", "a yellow hat"),
+            ("fox",      "orange",      "a green ribbon"),
+            ("cat",      "gray",        "a red scarf"),
+            ("bird",     "yellow",      "small blue wings"),
+            ("rabbit",   "brown",       "a pink bow"),
+            ("dog",      "golden",      "a blue collar"),
+            ("penguin",  "black and white", "an orange beak"),
+            ("squirrel", "rusty brown", "a striped tail"),
+            ("hedgehog", "gray",        "tiny round spines"),
+            ("deer",     "tan",         "small antlers"),
+        ]
+
+        let candidate = alternativeSpecies.first {
+            $0.species != avoidSpecies && $0.color != avoidColor
+        } ?? alternativeSpecies[0]
+
+        return "a \(candidate.color) \(candidate.species) with \(candidate.accessory)"
     }
 
     // MARK: - Camera Deduplication

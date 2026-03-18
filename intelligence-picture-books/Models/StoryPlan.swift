@@ -34,15 +34,15 @@ struct CharacterSheet: Sendable, Equatable {
     var ageFeeling: String
     var bodyColor: String
     var earShape: String
-    var earSize: String = ""       // 例: "large", "small", "medium"
-    var faceShape: String = ""     // 例: "round", "chubby", "oval"
-    var eyeStyle: String = ""      // 例: "large round", "sparkly", "wide"
-    var tailShape: String = ""     // 例: "fluffy round", "short stub", "long bushy"
+    var earSize: String = ""            // 例: "large", "small", "medium"
+    var faceShape: String = ""          // 例: "round", "chubby", "oval"
+    var eyeStyle: String = ""           // 例: "large round", "sparkly", "wide"
+    var faceImpression: String = ""     // 例: "round face with large sparkling eyes"
+    var chestFur: String = ""           // 例: "soft white chest fur"
+    var tailShape: String = ""          // 例: "fluffy round", "short stub", "long bushy"
     var accessory: String
     var personality: String
 
-    /// 画像プロンプトに注入するキャラクター記述（英語）
-    /// "CONSISTENT CHARACTER:" ヘッダーで AI に一貫性を強調する
     /// 画像プロンプトに注入するキャラクターの視覚的アンカー記述（英語・自然な文体）
     var promptFragment: String {
         var parts: [String] = []
@@ -53,8 +53,13 @@ struct CharacterSheet: Sendable, Equatable {
         }
         let earDesc = [earSize, earShape].filter { !$0.isEmpty }.joined(separator: " ")
         if !earDesc.isEmpty { parts.append("with \(earDesc) ears") }
-        if !faceShape.isEmpty { parts.append("\(faceShape) face") }
-        if !eyeStyle.isEmpty { parts.append("\(eyeStyle) eyes") }
+        if !faceImpression.isEmpty {
+            parts.append("\(faceImpression)")
+        } else {
+            if !faceShape.isEmpty { parts.append("\(faceShape) face") }
+            if !eyeStyle.isEmpty  { parts.append("\(eyeStyle) eyes") }
+        }
+        if !chestFur.isEmpty  { parts.append("\(chestFur)") }
         if !tailShape.isEmpty { parts.append("\(tailShape) tail") }
         if !accessory.isEmpty { parts.append("wearing \(accessory)") }
         return parts.joined(separator: ", ")
@@ -81,6 +86,8 @@ struct CharacterSheet: Sendable, Equatable {
         earSize: "",
         faceShape: "",
         eyeStyle: "",
+        faceImpression: "",
+        chestFur: "",
         tailShape: "",
         accessory: "",
         personality: ""
@@ -112,6 +119,9 @@ struct PagePlan: Sendable, Identifiable {
     var keyObjects: [String]
     var continuityNotes: String
     var sceneMode: SceneMode
+    /// duoシーンでの友達キャラの視覚的説明（主役と明確に異なる外見）
+    /// 例: "a small brown bear wearing a red hat"
+    var secondaryCharacterHint: String
 
     static func empty(pageNumber: Int) -> PagePlan {
         PagePlan(
@@ -125,7 +135,8 @@ struct PagePlan: Sendable, Identifiable {
             mood: "やさしい",
             keyObjects: [],
             continuityNotes: "",
-            sceneMode: .solo
+            sceneMode: .solo,
+            secondaryCharacterHint: ""
         )
     }
 
@@ -170,6 +181,8 @@ struct StoryPlan: Sendable {
         lines.append("Character: \(characterSheet.mainCharacterName) (\(characterSheet.species))")
         lines.append("  Body: \(characterSheet.bodyColor), EarSize: \(characterSheet.earSize), EarShape: \(characterSheet.earShape)")
         lines.append("  Face: \(characterSheet.faceShape), Eyes: \(characterSheet.eyeStyle), Tail: \(characterSheet.tailShape)")
+        lines.append("  FaceImpression: \(characterSheet.faceImpression)")
+        lines.append("  ChestFur: \(characterSheet.chestFur)")
         lines.append("  Accessory: \(characterSheet.accessory)")
         lines.append("Pages: \(pages.count)")
         for page in pages {

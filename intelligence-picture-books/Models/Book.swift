@@ -20,6 +20,8 @@ final class Book {
     var characterEarSize: String
     var characterFaceShape: String
     var characterEyeStyle: String
+    var characterFaceImpression: String
+    var characterChestFur: String
     var characterTailShape: String
     var characterPersonality: String
 
@@ -48,6 +50,8 @@ final class Book {
         characterEarSize: String = "",
         characterFaceShape: String = "",
         characterEyeStyle: String = "",
+        characterFaceImpression: String = "",
+        characterChestFur: String = "",
         characterTailShape: String = "",
         characterPersonality: String = "",
         visualStyleRaw: String = VisualStyle.default.rawValue,
@@ -70,6 +74,8 @@ final class Book {
         self.characterEarSize = characterEarSize
         self.characterFaceShape = characterFaceShape
         self.characterEyeStyle = characterEyeStyle
+        self.characterFaceImpression = characterFaceImpression
+        self.characterChestFur = characterChestFur
         self.characterTailShape = characterTailShape
         self.characterPersonality = characterPersonality
         self.visualStyleRaw = visualStyleRaw
@@ -94,6 +100,8 @@ final class Book {
             earSize: characterEarSize,
             faceShape: characterFaceShape,
             eyeStyle: characterEyeStyle,
+            faceImpression: characterFaceImpression,
+            chestFur: characterChestFur,
             tailShape: characterTailShape,
             accessory: characterAccessory,
             personality: characterPersonality.isEmpty ? "curious and kind" : characterPersonality

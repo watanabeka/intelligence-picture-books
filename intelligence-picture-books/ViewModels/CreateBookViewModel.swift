@@ -427,6 +427,8 @@ final class CreateBookViewModel {
             characterEarSize: cs.earSize,
             characterFaceShape: cs.faceShape,
             characterEyeStyle: cs.eyeStyle,
+            characterFaceImpression: cs.faceImpression,
+            characterChestFur: cs.chestFur,
             characterTailShape: cs.tailShape,
             characterPersonality: cs.personality,
             visualStyleRaw: plan.visualStyle.rawValue,

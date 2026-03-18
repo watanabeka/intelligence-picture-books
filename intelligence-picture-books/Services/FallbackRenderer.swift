@@ -151,7 +151,8 @@ enum FallbackRenderer {
             mood: mood,
             keyObjects: [],
             continuityNotes: "",
-            sceneMode: .solo
+            sceneMode: .solo,
+            secondaryCharacterHint: ""
         )
         return renderPage(
             pageNumber: pageNumber,

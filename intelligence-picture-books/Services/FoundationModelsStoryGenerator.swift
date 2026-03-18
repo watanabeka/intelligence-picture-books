@@ -56,6 +56,9 @@ struct StoryPagePlanOutput {
 
     @Guide(description: "True if the scene includes a companion/friend character alongside the main character. False if the main character is alone.")
     var hasFriend: Bool
+
+    @Guide(description: "When hasFriend is true: brief English description of the friend character. Must look clearly different from the main character — use a different species, color, or clothing. Example: 'a small brown bear wearing a red hat', 'a tiny yellow bird with a green ribbon'. Leave empty string when hasFriend is false.")
+    var friendDescription: String
 }
 
 /// タイトルとキャラクターのみ生成用（フォールバック tier 3）
@@ -103,6 +106,9 @@ struct SinglePagePlanOutput {
 
     @Guide(description: "True if a friend/companion appears in this scene alongside the main character.")
     var hasFriend: Bool
+
+    @Guide(description: "When hasFriend is true: brief English description of the friend character, clearly different from the main character (different species, color, or clothing). Example: 'a small brown bear wearing a red hat'. Leave empty string when hasFriend is false.")
+    var friendDescription: String
 }
 
 // MARK: - FoundationModelsStoryGenerator
@@ -267,7 +273,8 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
                 mood: pageOutput.mood,
                 keyObjects: pageOutput.keyObjects.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) },
                 continuityNotes: previousContext.isEmpty ? "" : "continues from previous scene",
-                sceneMode: pageOutput.hasFriend ? .duo : .solo
+                sceneMode: pageOutput.hasFriend ? .duo : .solo,
+                secondaryCharacterHint: pageOutput.hasFriend ? pageOutput.friendDescription : ""
             )
             pages.append(pagePlan)
 
@@ -320,7 +327,8 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
                 mood: pageOutput.mood,
                 keyObjects: pageOutput.keyObjects.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) },
                 continuityNotes: "",
-                sceneMode: pageOutput.hasFriend ? .duo : .solo
+                sceneMode: pageOutput.hasFriend ? .duo : .solo,
+                secondaryCharacterHint: pageOutput.hasFriend ? pageOutput.friendDescription : ""
             )
         }
 
