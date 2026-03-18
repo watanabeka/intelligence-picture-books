@@ -160,7 +160,16 @@ enum IllustrationPromptBuilder {
 
     /// リトライ時に適用するキャラクター固定フレーズ。
     /// キャラクターの種族・体色・アクセサリーを明示的に注入して AI の揺らぎを防ぐ。
+    /// 表紙リトライ用（PagePlan なし — 常に単一キャラクター）
+    private static func retryEnforcementClause(for character: CharacterSheet) -> String {
+        retryEnforcementClause(for: character, isSingleCharacter: true)
+    }
+
     private static func retryEnforcementClause(for character: CharacterSheet, page: PagePlan) -> String {
+        retryEnforcementClause(for: character, isSingleCharacter: !isCoCharacterScene(page))
+    }
+
+    private static func retryEnforcementClause(for character: CharacterSheet, isSingleCharacter: Bool) -> String {
         var lock = "STRICT CHARACTER LOCK"
         if !character.species.isEmpty && !character.bodyColor.isEmpty {
             lock += ": the \(character.bodyColor) \(character.species) must look IDENTICAL to all other pages"
@@ -175,17 +184,17 @@ enum IllustrationPromptBuilder {
         if !character.accessory.isEmpty {
             parts.append("must be wearing \(character.accessory) — same as every other page")
         }
-        if isCoCharacterScene(page) {
+        if isSingleCharacter {
             parts += [
-                "exactly TWO characters — main character and one friend, no others",
+                "ABSOLUTE RULE: only ONE character in the entire image",
+                "zero extra animals anywhere in the scene",
+                "zero additional people or creatures in background",
                 "same flat soft-outline illustration style",
                 "same pastel color palette as the rest of the book",
             ]
         } else {
             parts += [
-                "ABSOLUTE RULE: only ONE character in the entire image",
-                "zero extra animals anywhere in the scene",
-                "zero additional people or creatures in background",
+                "exactly TWO characters — main character and one friend, no others",
                 "same flat soft-outline illustration style",
                 "same pastel color palette as the rest of the book",
             ]
