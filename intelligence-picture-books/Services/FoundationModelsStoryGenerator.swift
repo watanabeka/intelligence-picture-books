@@ -12,7 +12,7 @@ struct StoryPlanOutput {
     @Guide(description: "Main character's name in Japanese (e.g. ミミ, ポチ)")
     var characterName: String
 
-    @Guide(description: "Main character's species in English (e.g. rabbit, cat, dog, bear)")
+    @Guide(description: "Main character's species in English. Choose an animal that fits the story theme (e.g. rabbit, cat, dog, bear, bird, fox, reindeer, penguin, elephant, horse, deer)")
     var characterSpecies: String
 
     @Guide(description: "Main character's body color in English (e.g. white, orange tabby, brown)")
@@ -61,7 +61,7 @@ struct TitleAndCharacterOutput {
     @Guide(description: "Main character's name in Japanese")
     var characterName: String
 
-    @Guide(description: "Main character's species in English (e.g. rabbit, cat, dog)")
+    @Guide(description: "Main character's species in English. Choose an animal that fits the story theme (e.g. rabbit, cat, dog, bear, fox, reindeer, bird, penguin, elephant)")
     var characterSpecies: String
 
     @Guide(description: "Main character's body color in English (e.g. white, brown)")
@@ -181,7 +181,7 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
         let charSession = LanguageModelSession(instructions: """
             You are a children's picture book author.
             Given a theme, create a title and main character for a picture book.
-            The character should be a cute animal that fits the theme.
+            Choose a cute animal species that best fits the theme — for example reindeer for a Christmas/winter theme, penguin for a cold/snow theme, fox for a forest theme, fish or penguin for an ocean theme. Do NOT default to rabbit unless the theme specifically involves rabbits.
             """)
 
         let charResponse = try await charSession.respond(
@@ -337,7 +337,7 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
             You must create a complete story plan with a consistent main character.
 
             CRITICAL RULES:
-            - The main character must be a cute animal (rabbit, cat, dog, bear, bird, etc.)
+            - The main character must be a cute animal that fits the story theme. Choose the species based on the theme — for example, if the theme involves reindeer or Christmas, use reindeer; if winter, use a penguin or bear; if forest, use a fox or bear; if ocean, use a fish or penguin. Do NOT default to rabbit unless the theme specifically calls for it.
             - Give the character a Japanese name and describe their appearance in English
             - The character must appear in EVERY page's scene description
             - Each page has exactly ONE event - do not cram multiple events

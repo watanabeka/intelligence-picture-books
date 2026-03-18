@@ -6,6 +6,7 @@ struct GenerationView: View {
     @State private var navigateToReader = false
     @State private var showRegenerateConfirm = false
     @State private var editingDraftIndex: Int?
+    @State private var showDebugOverlay = false
 
     private var isCompleted: Bool { viewModel.phase == .completed }
 
@@ -86,6 +87,16 @@ struct GenerationView: View {
                 }
             }
         }
+        #if DEBUG
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                showDebugOverlay.toggle()
+            } label: {
+                Image(systemName: showDebugOverlay ? "ladybug.fill" : "ladybug")
+                    .foregroundStyle(showDebugOverlay ? .red : .secondary)
+            }
+        }
+        #endif
     }
 
     // MARK: - Title
@@ -141,7 +152,9 @@ struct GenerationView: View {
                         : nil,
                     onRetry: (draft.imageState == .ready || draft.imageState == .fallback) && isCompleted
                         ? { viewModel.retryPageImage(at: index) }
-                        : nil
+                        : nil,
+                    showDebug: showDebugOverlay,
+                    characterSheet: viewModel.debugStoryPlan?.characterSheet
                 )
             }
         }

@@ -71,18 +71,10 @@ enum IllustrationPromptBuilder {
         segments.append(pictureBookClause)
         segments.append(illustrationMediumClause)
         segments.append(visualStyle.promptFragment)
-        segments.append(characterSheet.promptFragment)
-        segments.append(characterConsistencyClause)
 
+        // シーン記述をキャラクター固定フレーズより前に配置して AI への影響を最大化
         let safeScene = buildSafeScene(page.illustrationPrompt, fallbackSetting: "in a cheerful natural setting")
         if !safeScene.isEmpty { segments.append("scene: \(safeScene)") }
-
-        if !page.camera.isEmpty { segments.append("camera: \(page.camera)") }
-
-        if !page.location.isEmpty {
-            let safeLocation = IllustrationPromptTranslator.sanitizeJapanese(sanitizeForIllustration(page.location))
-            if !safeLocation.isEmpty { segments.append("setting: \(safeLocation)") }
-        }
 
         if !page.mood.isEmpty {
             segments.append("\(IllustrationPromptTranslator.moodToEnglish(page.mood)) atmosphere")
@@ -93,8 +85,17 @@ enum IllustrationPromptBuilder {
             if !safeObjects.isEmpty { segments.append("featuring: \(safeObjects.joined(separator: ", "))") }
         }
 
+        if !page.camera.isEmpty { segments.append("camera: \(page.camera)") }
+
+        if !page.location.isEmpty {
+            let safeLocation = IllustrationPromptTranslator.sanitizeJapanese(sanitizeForIllustration(page.location))
+            if !safeLocation.isEmpty { segments.append("setting: \(safeLocation)") }
+        }
+
         if !page.continuityNotes.isEmpty { segments.append("visual continuity: \(page.continuityNotes)") }
 
+        segments.append(characterSheet.promptFragment)
+        segments.append(characterConsistencyClause)
         segments.append(textFreeClause)
         return segments.joined(separator: ", ")
     }
@@ -168,17 +169,14 @@ enum IllustrationPromptBuilder {
         var segments: [String] = []
 
         segments.append(textFreeClause)
-        segments.append(retryEnforcementClause(for: characterSheet))
         segments.append(pictureBookClause)
         segments.append(illustrationMediumClause)
         segments.append(visualStyle.promptFragment)
-        segments.append(characterSheet.promptFragment)
-        segments.append(characterConsistencyClause)
 
+        // シーン記述をキャラクター固定フレーズより前に配置
         let safeScene = buildSafeScene(page.illustrationPrompt, fallbackSetting: "in a gentle peaceful setting")
         if !safeScene.isEmpty { segments.append("scene: \(safeScene)") }
 
-        if !page.camera.isEmpty { segments.append("camera: \(page.camera)") }
         if !page.mood.isEmpty {
             segments.append("\(IllustrationPromptTranslator.moodToEnglish(page.mood)) atmosphere")
         }
@@ -188,7 +186,12 @@ enum IllustrationPromptBuilder {
             if !safe.isEmpty { segments.append("featuring: \(safe.joined(separator: ", "))") }
         }
 
-        // 末尾に三重強調（リトライ専用）
+        if !page.camera.isEmpty { segments.append("camera: \(page.camera)") }
+
+        // キャラクター固定フレーズ（末尾に三重強調 — リトライ専用）
+        segments.append(characterSheet.promptFragment)
+        segments.append(characterConsistencyClause)
+        segments.append(retryEnforcementClause(for: characterSheet))
         segments.append(characterConsistencyClause)
         segments.append(retryEnforcementClause(for: characterSheet))
         segments.append(textFreeClause)

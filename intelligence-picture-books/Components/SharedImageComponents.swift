@@ -21,9 +21,12 @@ struct ImageFrame<Content: View>: View {
     }
 
     var body: some View {
-        content()
-            .frame(maxWidth: .infinity)
+        Color.clear
             .aspectRatio(aspectRatio, contentMode: .fit)
+            .overlay(alignment: .center) {
+                content()
+                    .clipped()
+            }
             .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }

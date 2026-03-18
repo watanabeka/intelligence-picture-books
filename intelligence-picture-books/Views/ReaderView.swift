@@ -227,8 +227,12 @@ struct ReaderView: View {
     #if DEBUG
     /// 全デバッグ情報をテキストにまとめてクリップボードにコピーする
     private func copyDebugLog() {
+        let character = viewModel.book.characterSheet
         var lines: [String] = ["=== Debug Log ==="]
         lines.append("Book: \(viewModel.book.title)")
+        lines.append("Character Species: \(character.species)")
+        lines.append("Character BodyColor: \(character.bodyColor)")
+        lines.append("Character Accessory: \(character.accessory)")
         lines.append("ImageCreator Available: \(viewModel.isImageCreatorAvailable)")
         if let reason = viewModel.imageCreatorUnavailableReason {
             lines.append("Unavailable Reason: \(reason)")
@@ -248,6 +252,7 @@ struct ReaderView: View {
             let retryPrompt = viewModel.pageRetryPrompts[page.pageNumber]
             lines.append("--- Page \(page.pageNumber) ---")
             lines.append("State: \(state), Fallback: \(page.isFallback), Retry: \(retry)")
+            lines.append("Prompt Hash: #\(abs(page.finalImagePrompt.hashValue) % 100000)")
             let sr = IllustrationPromptTranslator.sanitizeJapaneseVerbose(page.illustrationPrompt)
             lines.append("Mood: \(page.mood) → \(IllustrationPromptTranslator.moodToEnglish(page.mood))")
             lines.append("Scene Quality: \(sr.quality.description), Removed Tokens: \(sr.removedTokenCount)")
@@ -310,13 +315,23 @@ struct ReaderView: View {
         let retryCount = viewModel.pageRetryCounts[page.pageNumber] ?? 0
         let retryPrompt = viewModel.pageRetryPrompts[page.pageNumber]
         let state = viewModel.pageImageStates[page.pageNumber]
+        let character = viewModel.book.characterSheet
 
         // プロンプト品質情報（デバッグ計算）
         let sanitizeResult = IllustrationPromptTranslator.sanitizeJapaneseVerbose(page.illustrationPrompt)
         let promptLength = page.finalImagePrompt.count
+        let promptHash = abs(page.finalImagePrompt.hashValue) % 100000
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("Debug Info — Page \(page.pageNumber)").font(.caption.bold()).foregroundStyle(.orange)
+
+            // キャラクター情報
+            debugRow("Character Species", character.species.isEmpty ? "(empty)" : character.species)
+            debugRow("Character BodyColor", character.bodyColor.isEmpty ? "(empty)" : character.bodyColor)
+            debugRow("Character Accessory", character.accessory.isEmpty ? "(empty)" : character.accessory)
+
+            // アスペクト比
+            debugRow("Aspect Ratio Applied", "16:9 (\(ImageAspect.page.formatted(.number.precision(.fractionLength(4)))))")
 
             // 利用可否
             debugRow("ImageCreator Available", "\(viewModel.isImageCreatorAvailable)")
@@ -335,6 +350,7 @@ struct ReaderView: View {
             }
 
             // プロンプト品質
+            debugRow("Prompt Hash", "#\(promptHash)")
             debugRow("Mood", "\(page.mood) → \(IllustrationPromptTranslator.moodToEnglish(page.mood))")
             debugRow("Scene Quality", sanitizeResult.quality.description)
             debugRow("Removed Tokens", "\(sanitizeResult.removedTokenCount)")

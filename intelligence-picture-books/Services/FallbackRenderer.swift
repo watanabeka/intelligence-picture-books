@@ -107,14 +107,19 @@ enum FallbackRenderer {
                          scale: 0.5, color: scene.treeLighter)
             }
 
-            // メインキャラクター（ボディ付きで常に同じ見た目）
+            // メインキャラクター（ページ番号でX位置を変えてページごとに異なる見た目を作る）
+            let charXRatios: [CGFloat] = [0.40, 0.50, 0.30, 0.55, 0.35, 0.45, 0.25, 0.60]
+            let charX = rect.width * charXRatios[pageNumber % charXRatios.count]
             drawCharacterWithBody(mainSymbol, in: ctx,
-                                  at: CGPoint(x: rect.width * 0.4, y: rect.height * 0.48),
+                                  at: CGPoint(x: charX, y: rect.height * 0.48),
                                   size: 80, color: colorForCharacter(characterSheet))
 
-            // シーン固有のオブジェクト
+            // シーン固有のオブジェクト（キャラクターと反対側に配置）
             if let extra = extraSymbol {
-                drawSymbol(extra, in: ctx, at: CGPoint(x: rect.width * 0.68, y: rect.height * 0.50),
+                let extraX = charX > rect.width * 0.5
+                    ? rect.width * 0.25
+                    : rect.width * 0.72
+                drawSymbol(extra, in: ctx, at: CGPoint(x: extraX, y: rect.height * 0.50),
                            size: 44, color: palette.accent.withAlphaComponent(0.75))
             }
 
@@ -208,13 +213,19 @@ enum FallbackRenderer {
             (["turtle", "tortoise", "かめ", "亀"], "tortoise.fill"),
             (["bear", "くま", "熊"], "pawprint.fill"),
             (["bug", "ladybug", "むし", "虫"], "ladybug.fill"),
+            (["deer", "reindeer", "トナカイ", "しか", "鹿"], "leaf.fill"),
+            (["horse", "pony", "うま", "馬"], "fossil.shell.fill"),
+            (["fox", "きつね", "狐"], "hare.fill"),
+            (["penguin", "ペンギン"], "bird.fill"),
+            (["elephant", "ぞう", "象"], "pawprint.fill"),
+            (["lion", "tiger", "ライオン", "とら", "虎"], "pawprint.fill"),
         ]
         for entry in speciesMap {
             if entry.keywords.contains(where: { lower.contains($0) }) {
                 return entry.symbol
             }
         }
-        return "hare.fill" // デフォルト
+        return "pawprint.fill" // デフォルト
     }
 
     /// キャラクターの体の色からUIColorを決定
