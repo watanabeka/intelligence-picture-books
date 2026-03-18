@@ -245,11 +245,18 @@ struct ReaderView: View {
         for page in viewModel.book.sortedPages {
             let state = viewModel.pageImageStates[page.pageNumber] ?? .failed
             let retry = viewModel.pageRetryCounts[page.pageNumber] ?? 0
+            let retryPrompt = viewModel.pageRetryPrompts[page.pageNumber]
             lines.append("--- Page \(page.pageNumber) ---")
             lines.append("State: \(state), Fallback: \(page.isFallback), Retry: \(retry)")
-            lines.append("Mood: \(page.mood)")
-            if !page.finalImagePrompt.isEmpty {
-                lines.append("Prompt: \(page.finalImagePrompt)")
+            lines.append("Mood: \(page.mood) → \(IllustrationPromptTranslator.moodToEnglish(page.mood))")
+            lines.append("Scene Has Japanese: \(IllustrationPromptTranslator.hasJapanese(page.illustrationPrompt))")
+            if !page.illustrationPrompt.isEmpty {
+                lines.append("① Scene (LLM raw): \(page.illustrationPrompt)")
+            }
+            if let rp = retryPrompt {
+                lines.append("② Retry Prompt (EN): \(rp)")
+            } else if !page.finalImagePrompt.isEmpty {
+                lines.append("② Image Prompt (EN): \(page.finalImagePrompt)")
             }
         }
         lines.append("=================")
@@ -301,27 +308,41 @@ struct ReaderView: View {
         let retryCount = viewModel.pageRetryCounts[page.pageNumber] ?? 0
         let retryPrompt = viewModel.pageRetryPrompts[page.pageNumber]
         let state = viewModel.pageImageStates[page.pageNumber]
+        let sceneHasJapanese = IllustrationPromptTranslator.hasJapanese(page.illustrationPrompt)
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("Debug Info — Page \(page.pageNumber)").font(.caption.bold()).foregroundStyle(.orange)
+
+            // 利用可否
             debugRow("ImageCreator Available", "\(viewModel.isImageCreatorAvailable)")
             if let reason = viewModel.imageCreatorUnavailableReason {
                 debugRow("Unavailable Reason", reason)
             }
-            debugRow("Mood", page.mood)
-            debugRow("Is Fallback", "\(page.isFallback)")
+
+            // 画像状態
             debugRow("Image State", "\(String(describing: state))")
+            debugRow("Is Fallback", "\(page.isFallback)")
             debugRow("Retry Count", "\(retryCount)")
+
+            // エラー
             if let err = viewModel.lastImageError {
                 debugRow("Last Error", err)
             }
-            if let rp = retryPrompt {
-                debugRow("Retry Prompt", rp)
-            } else if !page.finalImagePrompt.isEmpty {
-                debugRow("Final Image Prompt", page.finalImagePrompt)
-            }
+
+            // 言語状態
+            debugRow("Mood", "\(page.mood) → \(IllustrationPromptTranslator.moodToEnglish(page.mood))")
+            debugRow("Scene Has Japanese", sceneHasJapanese ? "⚠️ YES (sanitized on build)" : "✓ No")
+
+            // プロンプト比較（元シーン vs 構築済み英語プロンプト）
             if !page.illustrationPrompt.isEmpty {
-                debugRow("Illustration Prompt", page.illustrationPrompt)
+                debugRow("① Scene (LLM raw)", page.illustrationPrompt)
+            }
+            if let rp = retryPrompt {
+                debugRow("② Retry Prompt (EN)", rp)
+            } else if !page.finalImagePrompt.isEmpty {
+                // finalImagePrompt は長いので先頭 300 文字のみ表示
+                let preview = String(page.finalImagePrompt.prefix(300))
+                debugRow("② Image Prompt (EN)", preview + (page.finalImagePrompt.count > 300 ? "…" : ""))
             }
         }
         .padding(12)

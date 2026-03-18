@@ -273,7 +273,7 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
                 subtitle: nil,
                 mainCharacterDescription: characterSheet.promptFragment,
                 worldKeywords: [],
-                coverPrompt: "a \(charOutput.characterBodyColor) \(charOutput.characterSpecies) wearing \(charOutput.characterAccessory) in a \(theme) world"
+                coverPrompt: "a \(charOutput.characterBodyColor) \(charOutput.characterSpecies) wearing \(charOutput.characterAccessory) in a \(IllustrationPromptTranslator.translateTheme(theme)) world"
             )
         )
 
@@ -315,7 +315,7 @@ final class FoundationModelsStoryGenerator: StoryGenerating, @unchecked Sendable
             subtitle: nil,
             mainCharacterDescription: characterSheet.promptFragment,
             worldKeywords: [],
-            coverPrompt: "a \(output.characterBodyColor) \(output.characterSpecies) wearing \(output.characterAccessory) in a \(theme) world"
+            coverPrompt: "a \(output.characterBodyColor) \(output.characterSpecies) wearing \(output.characterAccessory) in a \(IllustrationPromptTranslator.translateTheme(theme)) world"
         )
 
         return StoryPlan(

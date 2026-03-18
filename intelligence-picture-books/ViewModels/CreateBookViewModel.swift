@@ -273,12 +273,36 @@ final class CreateBookViewModel {
         }
     }
 
+    /// `unsupportedLanguage` が発生した場合、最小限英語プロンプトで1度だけ確認リトライする。
+    /// - 英語プロンプトで成功 → AI 生成として扱う
+    /// - 最小限英語でも失敗 → `unsupportedLanguage` を再スロー（呼び出し元がフラグ設定）
+    private func generateWithLanguageRetry(prompt: String, characterSheet: CharacterSheet) async throws -> UIImage {
+        do {
+            return try await illustrationGenerator.generateImage(prompt: prompt)
+        } catch {
+            guard let ice = error as? ImageCreator.Error, case .unsupportedLanguage = ice else {
+                throw error
+            }
+            debugLog("⚠️ unsupportedLanguage 検出 — 最小限英語プロンプトで確認リトライ中...")
+            debugLog("   理由: プロンプト内容の問題か、デバイス言語の問題かを切り分ける")
+            let minimalPrompt = IllustrationPromptTranslator.buildMinimalEnglishPrompt(
+                characterSheet: characterSheet
+            )
+            debugLog("   最小プロンプト: \(minimalPrompt)")
+            return try await illustrationGenerator.generateImage(prompt: minimalPrompt)
+            // 再び unsupportedLanguage がスローされれば呼び出し元で imagePlaygroundUnavailable = true
+        }
+    }
+
     private func generateCoverImage(plan: StoryPlan, prompt: String) async {
         var success = false
         for attempt in 1...2 {
             guard !Task.isCancelled else { return }
             do {
-                coverImage = try await illustrationGenerator.generateImage(prompt: prompt)
+                coverImage = try await generateWithLanguageRetry(
+                    prompt: prompt,
+                    characterSheet: plan.characterSheet
+                )
                 success = true
                 aiImageCount += 1
                 debugLog("Cover: success on attempt \(attempt)")
@@ -287,10 +311,9 @@ final class CreateBookViewModel {
                 if Task.isCancelled { return }
                 debugLog("Cover: attempt \(attempt) failed: \(error)")
                 lastImageError = String(describing: error)
-                // 型安全チェック: 確実に永続的なエラーのみ即座にスキップ
-                // ※ "unavailable" / "initialization" などの広すぎる文字列マッチは除外
-                //   （一時的障害と区別がつかないため）
                 if let ice = error as? ImageCreator.Error, case .unsupportedLanguage = ice {
+                    // 最小限英語でも失敗 → デバイス言語の問題として確定
+                    debugLog("⚠️ 最小限英語でも unsupportedLanguage → imagePlaygroundUnavailable = true")
                     imagePlaygroundUnavailable = true
                     break
                 }
@@ -325,7 +348,10 @@ final class CreateBookViewModel {
         for attempt in 1...2 {
             guard !Task.isCancelled else { return }
             do {
-                let img = try await illustrationGenerator.generateImage(prompt: prompt)
+                let img = try await generateWithLanguageRetry(
+                    prompt: prompt,
+                    characterSheet: plan.characterSheet
+                )
                 guard !Task.isCancelled else { return }
                 pageDrafts[index].image = img
                 pageDrafts[index].imageState = .ready
@@ -344,6 +370,7 @@ final class CreateBookViewModel {
                 debugLog("Page \(draft.pageNumber): attempt \(attempt) failed: \(error)")
                 lastImageError = String(describing: error)
                 if let ice = error as? ImageCreator.Error, case .unsupportedLanguage = ice {
+                    debugLog("⚠️ ページ\(draft.pageNumber): 最小限英語でも unsupportedLanguage → 確定")
                     imagePlaygroundUnavailable = true
                     break
                 }

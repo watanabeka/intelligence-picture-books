@@ -47,8 +47,10 @@ enum IllustrationPromptBuilder {
         // 3. キャラクター記述（毎回全情報を注入、ヘッダーで強調）
         segments.append(characterSheet.promptFragment)
 
-        // 4. シーン記述（危険要素を除去してから追加）
-        let safeScene = sanitizeForIllustration(page.illustrationPrompt)
+        // 4. シーン記述（危険要素を除去 + 日本語混入があれば除去してから追加）
+        let safeScene = IllustrationPromptTranslator.sanitizeJapanese(
+            sanitizeForIllustration(page.illustrationPrompt)
+        )
         if !safeScene.isEmpty {
             segments.append("scene: \(safeScene)")
         }
@@ -58,15 +60,17 @@ enum IllustrationPromptBuilder {
             segments.append("camera: \(page.camera)")
         }
 
-        // 6. 場所
+        // 6. 場所（日本語が混入していれば除去）
         if !page.location.isEmpty {
-            let safeLocation = sanitizeForIllustration(page.location)
+            let safeLocation = IllustrationPromptTranslator.sanitizeJapanese(
+                sanitizeForIllustration(page.location)
+            )
             if !safeLocation.isEmpty { segments.append("setting: \(safeLocation)") }
         }
 
-        // 7. ムード
+        // 7. ムード（IllustrationPromptTranslator の包括的な変換テーブルを使用）
         if !page.mood.isEmpty {
-            segments.append("\(moodToEnglish(page.mood)) atmosphere")
+            segments.append("\(IllustrationPromptTranslator.moodToEnglish(page.mood)) atmosphere")
         }
 
         // 8. キーオブジェクト
@@ -119,8 +123,10 @@ enum IllustrationPromptBuilder {
         // 4. キャラクター（完全記述）
         segments.append(characterSheet.promptFragment)
 
-        // 5. ワールド・カバープロンプト（sanitize済み）
-        let safeCoverPrompt = sanitizeForIllustration(coverPlan.coverPrompt)
+        // 5. ワールド・カバープロンプト（日本語テーマ混入を除去してから追加）
+        let safeCoverPrompt = IllustrationPromptTranslator.sanitizeJapanese(
+            sanitizeForIllustration(coverPlan.coverPrompt)
+        )
         if !safeCoverPrompt.isEmpty {
             segments.append(safeCoverPrompt)
         }
@@ -172,13 +178,17 @@ enum IllustrationPromptBuilder {
         // 3. キャラクター（フル記述）
         segments.append(characterSheet.promptFragment)
 
-        // 4. シーン
-        let safeScene = sanitizeForIllustration(page.illustrationPrompt)
+        // 4. シーン（日本語除去）
+        let safeScene = IllustrationPromptTranslator.sanitizeJapanese(
+            sanitizeForIllustration(page.illustrationPrompt)
+        )
         if !safeScene.isEmpty { segments.append("scene: \(safeScene)") }
 
         // 5. カメラ・ムード
         if !page.camera.isEmpty { segments.append("camera: \(page.camera)") }
-        if !page.mood.isEmpty { segments.append("\(moodToEnglish(page.mood)) atmosphere") }
+        if !page.mood.isEmpty {
+            segments.append("\(IllustrationPromptTranslator.moodToEnglish(page.mood)) atmosphere")
+        }
 
         // 6. キーオブジェクト
         if !page.keyObjects.isEmpty {
@@ -214,7 +224,9 @@ enum IllustrationPromptBuilder {
         segments.append(visualStyle.promptFragment)
         segments.append(characterSheet.promptFragment)
 
-        let safeCover = sanitizeForIllustration(coverPlan.coverPrompt)
+        let safeCover = IllustrationPromptTranslator.sanitizeJapanese(
+            sanitizeForIllustration(coverPlan.coverPrompt)
+        )
         if !safeCover.isEmpty { segments.append(safeCover) }
 
         segments.append("centered character, full body or three-quarters view, beautiful background")
@@ -273,28 +285,4 @@ enum IllustrationPromptBuilder {
         return triggers.contains(where: { lower.contains($0) })
     }
 
-    // MARK: - Mood Translation
-
-    private static func moodToEnglish(_ mood: String) -> String {
-        let moodMap: [(japanese: String, english: String)] = [
-            ("わくわく", "exciting and adventurous"),
-            ("たのしい", "cheerful and happy"),
-            ("にぎやか", "lively and bustling"),
-            ("どきどき", "thrilling and suspenseful"),
-            ("ゆうき", "brave and courageous"),
-            ("しんみり", "calm and contemplative"),
-            ("おだやか", "peaceful and serene"),
-            ("ふしぎ", "mysterious and wondrous"),
-            ("きらきら", "sparkling and magical"),
-            ("やさしい", "gentle and tender"),
-            ("あたたかい", "warm and cozy"),
-            ("ほっこり", "heartwarming"),
-            ("かなしい", "bittersweet and touching"),
-            ("うれしい", "joyful and delightful"),
-        ]
-        for entry in moodMap {
-            if mood.contains(entry.japanese) { return entry.english }
-        }
-        return "gentle and warm"
-    }
 }

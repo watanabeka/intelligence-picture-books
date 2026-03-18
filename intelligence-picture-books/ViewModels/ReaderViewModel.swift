@@ -70,6 +70,23 @@ final class ReaderViewModel {
 
     // MARK: - ページ画像リトライ
 
+    /// `unsupportedLanguage` 発生時に最小限英語プロンプトで確認リトライする。
+    /// これでも失敗したらデバイス言語の問題として確定し `unsupportedLanguage` を再スロー。
+    private func generateWithLanguageRetry(prompt: String) async throws -> UIImage {
+        do {
+            return try await illustrationGenerator.generateImage(prompt: prompt)
+        } catch {
+            guard let ice = error as? ImageCreator.Error, case .unsupportedLanguage = ice else {
+                throw error
+            }
+            debugLog("⚠️ unsupportedLanguage 検出 — 最小限英語プロンプトで確認リトライ中")
+            let minimalPrompt = IllustrationPromptTranslator.buildMinimalEnglishPrompt(
+                characterSheet: book.characterSheet
+            )
+            return try await illustrationGenerator.generateImage(prompt: minimalPrompt)
+        }
+    }
+
     func retryImage(for page: BookPage) async {
         let pageNum = page.pageNumber
         pageImageStates[pageNum] = .retrying
@@ -101,7 +118,7 @@ final class ReaderViewModel {
 
         for attempt in 1...2 {
             do {
-                let image = try await illustrationGenerator.generateImage(prompt: retryPrompt)
+                let image = try await generateWithLanguageRetry(prompt: retryPrompt)
                 let imageName = "\(book.id.uuidString)_page\(pageNum).png"
                 try await repository.saveImage(image, name: imageName)
                 try await repository.updatePageImageName(imageName, pageId: page.id)
@@ -113,9 +130,10 @@ final class ReaderViewModel {
                 lastImageError = String(describing: error)
                 debugLog("Page \(pageNum): retry attempt \(attempt) failed: \(error)")
                 if let ice = error as? ImageCreator.Error, case .unsupportedLanguage = ice {
+                    // 最小限英語でも失敗 → デバイス言語の問題として確定
                     isImageCreatorAvailable = false
                     imageCreatorUnavailableReason = "デバイス言語が非対応 (unsupportedLanguage)"
-                    debugLog("Page \(pageNum): ImageCreator.Error.unsupportedLanguage — フォールバックに移行")
+                    debugLog("Page \(pageNum): 最小英語でも unsupportedLanguage → フォールバックに移行")
                     break
                 }
             }
@@ -158,7 +176,7 @@ final class ReaderViewModel {
 
         for attempt in 1...2 {
             do {
-                let image = try await illustrationGenerator.generateImage(prompt: retryPrompt)
+                let image = try await generateWithLanguageRetry(prompt: retryPrompt)
                 let imageName = "\(book.id.uuidString)_cover.png"
                 try await repository.saveImage(image, name: imageName)
                 coverImage = image
@@ -169,9 +187,10 @@ final class ReaderViewModel {
                 lastImageError = String(describing: error)
                 debugLog("Cover: retry attempt \(attempt) failed: \(error)")
                 if let ice = error as? ImageCreator.Error, case .unsupportedLanguage = ice {
+                    // 最小限英語でも失敗 → デバイス言語の問題として確定
                     isImageCreatorAvailable = false
                     imageCreatorUnavailableReason = "デバイス言語が非対応 (unsupportedLanguage)"
-                    debugLog("Cover: ImageCreator.Error.unsupportedLanguage — フォールバックに移行")
+                    debugLog("Cover: 最小英語でも unsupportedLanguage → フォールバックに移行")
                     break
                 }
             }
