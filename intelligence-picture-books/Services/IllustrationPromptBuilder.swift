@@ -6,7 +6,7 @@ enum IllustrationPromptBuilder {
 
     // MARK: - 固定フレーズ定数
 
-    /// 文字・テキスト類の完全禁止フレーズ（先頭と末尾に重複配置して強調）
+    /// 文字・テキスト類の完全禁止フレーズ（末尾に配置して強調）
     private static let textFreeClause =
         "absolutely no text of any kind, no letters, no alphabet, no numbers, " +
         "no words, no writing, no captions, no labels, no subtitles, no watermarks, " +
@@ -23,12 +23,35 @@ enum IllustrationPromptBuilder {
     private static let illustrationMediumClause =
         "digital children's book illustration, flat art, soft lighting, no photorealism"
 
-    /// キャラクター一貫性フレーズ（全ページ・全生成に必須）
+    /// 1キャラクターのみ（通常ページ）
+    private static let singleCharacterClause =
+        "main character only — no extra animals, no additional people in background"
+
+    /// キャラクター一貫性フレーズ（全ページ共通部分）
     private static let characterConsistencyClause =
         "same exact main character with identical appearance throughout the entire book, " +
-        "same face shape and body proportions, same color — no character variation allowed, " +
-        "only ONE character in the scene — absolutely no extra characters, " +
-        "no additional animals, no people in background"
+        "same face shape and body proportions, same color — no character variation allowed"
+
+    /// ページのシーンが複数キャラクターを含む出会い・共演シーンか判定する
+    private static func isCoCharacterScene(_ page: PagePlan) -> Bool {
+        let lower = page.illustrationPrompt.lowercased()
+        let triggers = [
+            "meet", "friend", "together", "greet", "both", "two character",
+            "playing with", "sitting with", "standing with", "walks with",
+            "encounters", "introduce", "companion", "side by side", "with a "
+        ]
+        return triggers.contains(where: { lower.contains($0) })
+    }
+
+    /// ページ状況に応じたキャラクター人数制限フレーズを返す
+    private static func characterCountClause(for page: PagePlan) -> String {
+        if isCoCharacterScene(page) {
+            return "exactly TWO characters in the scene — main character and one friend character only, " +
+                   "no additional animals or people beyond these two"
+        } else {
+            return singleCharacterClause
+        }
+    }
 
     /// 表紙・表紙リトライで共通の「キャラクター主役シーン」指示
     private static let coverSceneClause =
@@ -59,7 +82,7 @@ enum IllustrationPromptBuilder {
     // MARK: - Page Prompt
 
     /// ページ用の画像プロンプトを構築する。
-    /// 文字禁止を先頭と末尾の両方に配置して AI への影響を最大化。
+    /// シーン内容を先頭に配置し、スタイル・禁止制約は末尾に集約する。
     static func buildPagePrompt(
         page: PagePlan,
         characterSheet: CharacterSheet,
@@ -67,12 +90,7 @@ enum IllustrationPromptBuilder {
     ) -> String {
         var segments: [String] = []
 
-        segments.append(textFreeClause)
-        segments.append(pictureBookClause)
-        segments.append(illustrationMediumClause)
-        segments.append(visualStyle.promptFragment)
-
-        // シーン記述をキャラクター固定フレーズより前に配置して AI への影響を最大化
+        // ① シーン内容を先頭に — AI の注意が最も強い位置に配置
         let safeScene = buildSafeScene(page.illustrationPrompt, fallbackSetting: "in a cheerful natural setting")
         if !safeScene.isEmpty { segments.append("scene: \(safeScene)") }
 
@@ -94,8 +112,15 @@ enum IllustrationPromptBuilder {
 
         if !page.continuityNotes.isEmpty { segments.append("visual continuity: \(page.continuityNotes)") }
 
+        // ② キャラクター情報（キャラ固定はシーン直後）
         segments.append(characterSheet.promptFragment)
         segments.append(characterConsistencyClause)
+        segments.append(characterCountClause(for: page))
+
+        // ③ スタイル・制約は後半（シーン内容への干渉を最小化）
+        segments.append(pictureBookClause)
+        segments.append(visualStyle.promptFragment)
+        segments.append(illustrationMediumClause)
         segments.append(textFreeClause)
         return segments.joined(separator: ", ")
     }
@@ -135,7 +160,7 @@ enum IllustrationPromptBuilder {
 
     /// リトライ時に適用するキャラクター固定フレーズ。
     /// キャラクターの種族・体色・アクセサリーを明示的に注入して AI の揺らぎを防ぐ。
-    private static func retryEnforcementClause(for character: CharacterSheet) -> String {
+    private static func retryEnforcementClause(for character: CharacterSheet, page: PagePlan) -> String {
         var lock = "STRICT CHARACTER LOCK"
         if !character.species.isEmpty && !character.bodyColor.isEmpty {
             lock += ": the \(character.bodyColor) \(character.species) must look IDENTICAL to all other pages"
@@ -150,13 +175,21 @@ enum IllustrationPromptBuilder {
         if !character.accessory.isEmpty {
             parts.append("must be wearing \(character.accessory) — same as every other page")
         }
-        parts += [
-            "ABSOLUTE RULE: only ONE character in the entire image",
-            "zero extra animals anywhere in the scene",
-            "zero additional people or creatures in background",
-            "same flat soft-outline illustration style",
-            "same pastel color palette as the rest of the book",
-        ]
+        if isCoCharacterScene(page) {
+            parts += [
+                "exactly TWO characters — main character and one friend, no others",
+                "same flat soft-outline illustration style",
+                "same pastel color palette as the rest of the book",
+            ]
+        } else {
+            parts += [
+                "ABSOLUTE RULE: only ONE character in the entire image",
+                "zero extra animals anywhere in the scene",
+                "zero additional people or creatures in background",
+                "same flat soft-outline illustration style",
+                "same pastel color palette as the rest of the book",
+            ]
+        }
         return parts.joined(separator: ", ")
     }
 
@@ -168,12 +201,7 @@ enum IllustrationPromptBuilder {
     ) -> String {
         var segments: [String] = []
 
-        segments.append(textFreeClause)
-        segments.append(pictureBookClause)
-        segments.append(illustrationMediumClause)
-        segments.append(visualStyle.promptFragment)
-
-        // シーン記述をキャラクター固定フレーズより前に配置
+        // ① シーン内容を先頭に
         let safeScene = buildSafeScene(page.illustrationPrompt, fallbackSetting: "in a gentle peaceful setting")
         if !safeScene.isEmpty { segments.append("scene: \(safeScene)") }
 
@@ -188,12 +216,17 @@ enum IllustrationPromptBuilder {
 
         if !page.camera.isEmpty { segments.append("camera: \(page.camera)") }
 
-        // キャラクター固定フレーズ（末尾に三重強調 — リトライ専用）
+        // ② キャラクター固定（リトライ専用: 二重強調）
         segments.append(characterSheet.promptFragment)
         segments.append(characterConsistencyClause)
-        segments.append(retryEnforcementClause(for: characterSheet))
-        segments.append(characterConsistencyClause)
-        segments.append(retryEnforcementClause(for: characterSheet))
+        segments.append(characterCountClause(for: page))
+        segments.append(retryEnforcementClause(for: characterSheet, page: page))
+        segments.append(retryEnforcementClause(for: characterSheet, page: page))
+
+        // ③ スタイル・制約
+        segments.append(pictureBookClause)
+        segments.append(visualStyle.promptFragment)
+        segments.append(illustrationMediumClause)
         segments.append(textFreeClause)
         return segments.joined(separator: ", ")
     }
